@@ -171,6 +171,10 @@ class pha{
 
   Integer rebinChannels(grouping&, string);
   Integer rebinChannels(grouping&);
+  
+  // VS: Init channels
+
+  Integer initChannels(Integer nchan);
 
   // Shift channels
 
@@ -560,6 +564,8 @@ class arf{
 
   ~arf();
 
+
+
   // read file into object. Third option is to read from a row of a type II file
 
   Integer read(string filename);
@@ -600,6 +606,8 @@ class arf{
   Integer checkCompatibility(const arf&);
 
   Integer convertUnits();
+  
+  Integer initChannels(Integer nchan);
 
 };
 

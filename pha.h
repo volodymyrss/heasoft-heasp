@@ -118,6 +118,10 @@ class pha{
 
   Integer rebinChannels(grouping&);
   Integer rebinChannels(grouping&, string);
+  
+  // VS: init channels
+
+  Integer initChannels(Integer nchan);
 
   // Shift channels
 

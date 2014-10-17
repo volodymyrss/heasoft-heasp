@@ -253,7 +253,7 @@ Integer arf::write(string filename)
   tform.push_back("E");
   tunit.push_back(" ");
 
-  ttype.push_back("EFFAREA");
+  ttype.push_back("SPECRESP");
   tform.push_back("E");
   tunit.push_back(" ");
 
@@ -288,7 +288,7 @@ Integer arf::write(string filename)
 
   SPwriteCol(arf, "ENERG_LO", LowEnergy);
   SPwriteCol(arf, "ENERG_HI", HighEnergy);
-  SPwriteCol(arf, "EFFAREA", EffArea);
+  SPwriteCol(arf, "SPECRESP", EffArea);
 
   // Write the units
 
@@ -427,5 +427,28 @@ Integer NumberofARFs(string filename, Integer HDUnumber, Integer& Status)
 
 }
 
+Integer arf::initChannels(Integer nchan) {
+    LowEnergy.clear();
+    HighEnergy.clear();
+    EffArea.clear();
+
+    Version = "1.3.0";
+    Telescope = "mock_telescope";
+    Instrument = "mock_instrument";
+    Detector = "mock_detector";
+    Filter = " ";
+    ExtensionName = "ARF";
+
+    for (Integer i=0;i<nchan;i++) {
+        LowEnergy.push_back(0);
+        HighEnergy.push_back(0);
+        EffArea.push_back(0);
+    }
 
 
+    EnergyUnits="keV";
+    arfUnits="cm**2";
+
+    return(OK); 
+
+}

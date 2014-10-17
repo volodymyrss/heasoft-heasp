@@ -36,6 +36,11 @@ class arf{
 
   ~arf();
 
+  //
+  //
+
+  Integer initChannels(Integer nchan);
+
   // read file into object. Third option is to read from a row of a type II file
 
   Integer read(string filename);
