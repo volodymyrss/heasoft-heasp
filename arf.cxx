@@ -468,6 +468,28 @@ arf operator* (const Real& f, const arf& a)
   return c *= f;
 }
 
+Integer arf::initChannels(Integer nchan) {
+    LowEnergy.clear();
+    HighEnergy.clear();
+    EffArea.clear();
+
+    Version = "1.3.0";
+    Telescope = "mock_telescope";
+    Instrument = "mock_instrument";
+    Detector = "mock_detector";
+    Filter = " ";
+    ExtensionName = "ARF";
+
+    for (Integer i=0;i<nchan;i++) {
+        LowEnergy.push_back(0);
+        HighEnergy.push_back(0);
+        EffArea.push_back(0);
+    }
 
 
+    EnergyUnits="keV";
+    arfUnits="cm**2";
 
+    return(OK); 
+
+}

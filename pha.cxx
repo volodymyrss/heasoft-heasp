@@ -466,7 +466,7 @@ void pha::clear()
   DetChans = 0;
   Poisserr = false;
   Datatype = " ";
-  PHAVersion = " ";
+  PHAVersion = "";
   Spectrumtype = " ";
   ResponseFile = " ";
   AncillaryFile = " ";
@@ -1358,6 +1358,55 @@ Integer pha::rebinChannels(grouping& GroupInfo, string errorType)
 
   return(OK);
 }
+
+// VS:
+Integer pha::initChannels(Integer nchan) {
+    FirstChannel = 0;
+
+    Pha.clear();
+    StatError.clear();
+    SysError.clear();
+    Channel.clear();
+    Quality.clear();
+    Group.clear();
+    AreaScaling.clear();
+    BackScaling.clear();
+
+    Exposure = 0.0;
+    CorrectionScaling = 0.0;
+
+    DetChans = nchan;
+    Poisserr = false;
+    Datatype = "COUNT";
+    PHAVersion = "1.2.1";
+    Spectrumtype = "TOTAL";
+    ResponseFile = "NONE";
+    AncillaryFile = "NONE";
+    BackgroundFile = "NONE";
+    CorrectionFile = "NONE";
+    FluxUnits = " ";
+    ChannelType = "PI";
+    Telescope = "mock_telescope";
+    Instrument = "mock_instrument";
+    Detector = "mock_detector";
+    Filter = " ";
+    Datamode = " ";
+
+    XSPECFilter.clear();
+
+    for (Integer i=0;i<nchan;i++) {
+        Pha.push_back(0);
+        StatError.push_back(0);
+        SysError.push_back(0);
+        Channel.push_back(i);
+        Quality.push_back(0);
+        Group.push_back(1);
+        AreaScaling.push_back(0);
+        BackScaling.push_back(0);
+    }
+}
+
+// :VS
 
 // Remaps counts up or down in channels.
 

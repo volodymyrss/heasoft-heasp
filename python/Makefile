@@ -18,11 +18,13 @@ HD_LIBRARY_SRC_cxx      = heasp_wrap.cxx
 
 HD_ADD_SHLIB_LIBS       = yes
 
-HD_SHLIB_LIBS           = ${HD_LFLAGS} -l${HEASP} \
-			  -l${CCFITS} -l${CFITSIO} ${PYTHON_LIB} -L${HEADAS}/lib -L$(shell python-config --prefix)/lib
+HD_SHLIB_LIBS           = ${HD_LFLAGS} -l${HEASP} -l${HEAUTILS} -l${CCFITS} -l${CFITSIO} -l${HEAIO} -lape_2.9 -lreadline  \
+                          ${PYTHON_LIB} ${SYSLIBS} \
+			  			  -L${HEADAS}/lib -L$(shell python-config --prefix)/lib
 
 HD_INSTALL_PYTHON_LIBS  = lib${HD_LIBRARY_ROOT}${SHLIB_SUFFIX} \
-                          heasp.py
+                          heasp.py \
+						  heaspa.py
 
 HD_PYTHON_SUBDIR        = 
 

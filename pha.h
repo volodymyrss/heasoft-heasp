@@ -145,6 +145,10 @@ class pha{
 
   Integer rebinChannels(grouping&);
   Integer rebinChannels(grouping&, string);
+  
+  // VS: init channels
+
+  Integer initChannels(Integer nchan);
 
   // Shift channels. Option to use channel energy bounds in which case Shift is
   // assumed to be in energies, otherwise in channel number.

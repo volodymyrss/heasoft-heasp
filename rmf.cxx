@@ -94,7 +94,9 @@ Integer rmf::read(string filename, Integer RMFnumber)
   // read the MATRIX extension
 
   Status = this->readMatrix(filename, RMFnumber);
-  if ( Status != OK ) return(Status);
+  if ( Status != OK ) {
+    return(Status);
+};
 
   // try to read the EBOUNDS extension. If this fails try to read with RMFnumber = 1
   // under assumption that there are multiple MATRIX extensions and only one EBOUNDS
@@ -200,6 +202,7 @@ Integer rmf::readMatrix(string filename, Integer RMFnumber)
   string hduName("MATRIX");
   string DefString;
   bool verbosity = FITS::verboseMode();
+  FITS::setVerboseMode(true);
 
   // Read in the MATRIX extension number RMFnumber
   // and set up an object called rmf with the contents
@@ -411,6 +414,8 @@ Integer rmf::readMatrix(string filename, Integer RMFnumber)
     SPreadVectorCol(rmf, "ORDER", order);
   } catch (...) {
   }
+
+  std::cout << "error stack:" << SPgetErrorStack() << std::endl;
 
   FITS::clearErrors();
   FITS::setVerboseMode(verbosity);

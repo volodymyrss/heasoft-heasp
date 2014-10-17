@@ -199,6 +199,10 @@ class pha{
 
   Integer rebinChannels(grouping&, string);
   Integer rebinChannels(grouping&);
+  
+  // VS: Init channels
+
+  Integer initChannels(Integer nchan);
 
   // Shift channels. Option to use channel energy bounds in which case Shift is
   // assumed to be in energies, otherwise in channel number.
@@ -648,6 +652,8 @@ class arf{
 
   ~arf();
 
+
+
   // read file into object. Third option is to read from a row of a type II file
 
   Integer read(string filename);
@@ -696,6 +702,8 @@ class arf{
   Integer checkCompatibility(const arf&);
 
   Integer convertUnits();
+  
+  Integer initChannels(Integer nchan);
 
 };
 

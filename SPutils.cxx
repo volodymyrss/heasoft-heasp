@@ -459,6 +459,8 @@ void SPreportError(int errorNumber, string optionalString)
   string msg = SPerrorNames[errorNumber] + ": " + optionalString;
   SPerrorStack.push_back(msg);
 
+  std::cout << "error: " << msg << std::endl;
+
   return;
 }
 
