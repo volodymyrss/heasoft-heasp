@@ -3,5 +3,5 @@ An extension of HEASoft heasp module, adding a function to initialize and write 
 ```python
 import heaspa
 
-heaspa.PHA([0,1],[1,1],10).write("a.fits")
+heaspa.PHA(counts=[0,1],count_errors=[1,1],exposure=10).write("a.fits")
 ```
