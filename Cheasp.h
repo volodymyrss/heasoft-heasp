@@ -1,9 +1,10 @@
 /* Header file for heasp routines
    Defines structures for RMF, RMFchain, ARF, PHA, BinFactors
    Includes prototypes for functions */
+   
+#include "fitsio.h"
 
 #include "fitsio.h"
-#include "headas.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -181,21 +182,30 @@ struct BinFactors {
 
 /* function proto-types */
 
-/* read the RMF matrix from an open FITS file - if there are multiple RMF extensions then
+/* read the RMF matrix and ebounds from a FITS file. this assumes that there is only one
+   of each in the file. */
+
+int ReadRMF(char *filename, struct RMF *rmf);
+
+/* write the RMF matrix and ebounds to a FITS file */
+
+int WriteRMF(char *filename, struct RMF *rmf);
+
+/* read the RMF matrix from a FITS file - if there are multiple RMF extensions then
    read the one in RMFnumber */
 
 int ReadRMFMatrix(char *filename, long RMFnumber, struct RMF *rmf);
 
-/* write the RMF matrix to an opened FITS file */
+/* write the RMF matrix to a FITS file */
 
 int WriteRMFMatrix(char *filename, struct RMF *rmf);
 
-/* read the RMF ebounds from an open FITS file - if there are multiple EBOUNDS extensions then
+/* read the RMF ebounds from a FITS file - if there are multiple EBOUNDS extensions then
    read the one in EBDnumber */
 
 int ReadRMFEbounds(char *filename, long EBDnumber, struct RMF *rmf);
 
-/* write the RMF ebounds to an opened FITS file */
+/* write the RMF ebounds to a FITS file */
 
 int WriteRMFEbounds(char *filename, struct RMF *rmf);
 
@@ -207,6 +217,12 @@ void DisplayRMF(struct RMF *rmf);
    numbers to return NumberPhotons entries in the channel array */
 
 void ReturnChannel(struct RMF *rmf, float energy, int NumberPhotons, long *channel);
+
+/* return channels for photons of the given input energies - draws random
+   numbers to return NumberPhotons[i] entries for energy[i] in the channel array */
+
+  void ReturnChannelMultiEnergies(struct RMF *rmf, int NumberEnergies, float *energy, 
+				  int *NumberPhotons, long *channel);
 
 /* normalize the response to unity in each energy */
 
@@ -237,12 +253,12 @@ float ReturnRMFElement(struct RMF *rmf, long channel, long energybin);
 
 int AddRMF(struct RMF *rmf1, struct RMF *rmf2);
 
-/* read the effective areas from an open FITS file - if there are multiple SPECRESP extensions then
+/* read the effective areas from a FITS file - if there are multiple SPECRESP extensions then
    read the one in ARFFnumber */
 
 int ReadARF(char *filename, long ARFnumber, struct ARF *arf);
 
-/* write the ARF to an opened FITS file */
+/* write the ARF to a FITS file */
 
 int WriteARF(char *filename, struct ARF *arf);
 
@@ -258,22 +274,22 @@ int AddARF(struct ARF *arf1, struct ARF *arf2);
 
 long MergeARFRMF(struct ARF *arf, struct RMF *rmf);
 
-/* read the type I PHA extension from an open FITS file - if there are multiple PHA 
+/* read the type I PHA extension from a FITS file - if there are multiple PHA 
    extensions then read the one in PHAnumber */
 
 int ReadPHAtypeI(char *filename, long PHAnumber, struct PHA *phastruct);
  
-/* read the type II PHA extension from an open FITS file - if there are multiple PHA
+/* read the type II PHA extension from a FITS file - if there are multiple PHA
    extensions then read the one in PHAnumber - within the typeII extension reads the 
    spectra listed in the SpectrumNumber vector */
 
 int ReadPHAtypeII(char *filename, long PHAnumber, long NumberSpectra, long *SpectrumNumber, struct PHA **phastructs);
 
-/* write the type I PHA extension to an open FITS file */
+/* write the type I PHA extension to a FITS file */
 
 int WritePHAtypeI(char *filename, struct PHA *phastruct);
 
-/* write the type II PHA extension to an open FITS file */
+/* write the type II PHA extension to a FITS file */
 
 int WritePHAtypeII(char *filename, long NumberSpectra, struct PHA **phastructs);
 

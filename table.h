@@ -45,8 +45,10 @@ class tableSpectrum{
  public:
 
   vector<Real> Flux;
+  vector<Real> FluxError;
   vector<Real> ParameterValues;
   vector<vector<Real> > addFlux;
+  vector<vector<Real> > addFluxError;
 
   //constructor
 
@@ -90,7 +92,10 @@ class table{
   bool isAdditive;
   vector<Real> Energies;
   string EnergyUnits;
-
+  Real LowEnergyLimit;
+  Real HighEnergyLimit;
+  string Filename;
+  
   // constructor
 
   table();
@@ -99,15 +104,21 @@ class table{
 
   ~table();
 
-  // read the table from a FITS file
+  // read the table from a FITS file. if loadAll is false then don't actually
+  // read in the Spectra but set up the objects
 
-  Integer read(string filename);
+  Integer read(string infilename);
+  Integer read(string infilename, bool loadAll);
+
+  // read the listed Spectra
+
+  template <class T> Integer readSpectra(T& spectrumList); 
 
   // Push table Parameter object
 
   void pushParameter(const tableParameter& paramObject);
 
-  // Push spectrum Parameter object
+  // Push table Spectrum object
 
   void pushSpectrum(const tableSpectrum& spectrumObject);
 
@@ -121,7 +132,7 @@ class table{
 
   // display information about the table - return as a string
 
-  string disp();
+  string disp(const bool headerOnly);
 
   // clear contents of table object (mainly useful for Python)
 
@@ -143,6 +154,12 @@ class table{
 
   // write to a FITS file
 
-  Integer write(string filename);
+  Integer write(string outfilename);
+
+  // get values from table for input parameters using interpolation.
+
+  template <class T> Integer getValues(const T& parameterValues, const Real minEnergy,
+				       const Real maxEnergy, T& tableEnergyBins, 
+				       T& tableValues, T& tableErrors);
 
 };

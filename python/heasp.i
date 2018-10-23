@@ -41,7 +41,7 @@ using namespace std;
 // define Integer and Real
 
 typedef int Integer;
-typedef float Real;
+typedef double Real;
 
 // set up error statuses
 
@@ -49,7 +49,8 @@ enum{OK, NoSuchFile, NoData, NoChannelData, NoStatError, CannotCreate,
      NoEnergLo, NoEnergHi, NoSpecresp, NoEboundsExt, NoEmin, NoEmax,
      NoMatrixExt, NoNgrp, NoFchan, NoNchan, NoMatrix, CannotCreateMatrixExt,
      CannotCreateEboundsExt, InconsistentGrouping, InconsistentEnergies,
-     InconsistentChannels, InconsistentUnits, UnknownXUnits, UnknownYUnits};
+     InconsistentChannels, InconsistentUnits, UnknownXUnits, UnknownYUnits,
+     InconsistentNumelt, InconsistentNumgrp};
 
 // SWIG includes and template definitions
 
@@ -73,16 +74,18 @@ class pha{
 
   Integer FirstChannel;                 // First legal channel number
 
-  vector<Real> Pha;                        // PHA data
-  vector<Real> StatError;                  // Statistical error 
-  vector<Real> SysError;                   // Statistical error 
+  vector<Real> Pha;                     // PHA data
+  vector<Real> StatError;               // Statistical error 
+  vector<Real> SysError;                // Statistical error 
 
-  vector<Integer> Channel;                 // Channel number
-  vector<Integer> Quality;                 // Data quality 
-  vector<Integer> Group;                   // Data grouping 
+  vector<Integer> Channel;              // Channel number
+  vector<Integer> Quality;              // Data quality (0=good, 1=bad, 2=dubious, 
+                                        //               5=set bad by user)
+  vector<Integer> Group;                // Data grouping ( 1=start of bin, 
+                                        //                -1=continuation of bin)
 
-  vector<Real> AreaScaling;                // Area scaling factor 
-  vector<Real> BackScaling;                // Background scaling factor 
+  vector<Real> AreaScaling;             // Area scaling factor 
+  vector<Real> BackScaling;             // Background scaling factor 
 
   Real Exposure;                        // Exposure time 
   Real CorrectionScaling;               // Correction file scale factor 
@@ -163,18 +166,52 @@ class pha{
 
   Integer checkCompatibility(const pha&);
 
+  // Select a subset of the channels
+
+  Integer selectChannels(vector<Integer>& Start, vector<Integer>& End);
+
   // Set grouping array from grouping object
 
   Integer setGrouping(grouping&);
+
+  // Get grouping object from the grouping array
+
+  grouping getGrouping();
+
+  // Get grouping (optionally between channels StartChannel and EndChannel) 
+  // using a minimum number of counts per bin
+
+  grouping getMinCountsGrouping(const Integer MinCounts, const Integer StartChannel,
+			       const Integer EndChannel);
+  grouping getMinCountsGrouping(const Integer MinCounts);
+
+  // Get grouping (optionally between channels StartChannel and EndChannel) 
+  // using a minimum S/N. Optionally includes a background file as well.
+
+  grouping getMinSNGrouping(const Real SignalToNoise, const Integer StartChannel,
+			    const Integer EndChannel, const pha& Background);
+  grouping getMinSNGrouping(const Real SignalToNoise, const pha& Background);
+  grouping getMinSNGrouping(const Real SignalToNoise, const Integer StartChannel,
+			    const Integer EndChannel);
+  grouping getMinSNGrouping(const Real SignalToNoise);
 
   // Rebin channels
 
   Integer rebinChannels(grouping&, string);
   Integer rebinChannels(grouping&);
 
-  // Shift channels
+  // Shift channels. Option to use channel energy bounds in which case Shift is
+  // assumed to be in energies, otherwise in channel number.
 
   Integer shiftChannels(Integer Start, Integer End, Real Shift);
+  Integer shiftChannels(Integer Start, Integer End, Real Shift, Real Factor);
+  Integer shiftChannels(vector<Integer>& Start, vector<Integer>& End, vector<Real>& Shift,
+			vector<Real>& Factor);
+  Integer shiftChannels(vector<Real>& ChannelLowEnergy, vector<Real>& ChannelHighEnergy, 
+			Integer Start, Integer End, Real Shift, Real Factor);
+  Integer shiftChannels(vector<Real>& ChannelLowEnergy, vector<Real>& ChannelHighEnergy, 
+			vector<Integer>& Start, vector<Integer>& End, vector<Real>& Shift,
+			vector<Real>& Factor);
 
   // Convert flux units from whatever they are currently to ph/cm^2/s. 
   // This requires an input the channel energy arrays from the rmf object and
@@ -193,14 +230,22 @@ class pha{
 // return the type of a PHA extension
 
 Integer PHAtype(string filename, Integer PHAnumber); 
+Integer PHAtype(string filename, Integer PHAnumber, Integer& Status); 
 
 // return true if COUNTS column exists and is integer
 
 bool IsPHAcounts(string filename, Integer PHAnumber); 
+bool IsPHAcounts(string filename, Integer PHAnumber, Integer& Status); 
 
 // return the number of spectra in a type II PHA extension
 
 Integer NumberofSpectra(string filename, Integer PHAnumber); 
+Integer NumberofSpectra(string filename, Integer PHAnumber, Integer& Status); 
+
+// return the numbers of any spectrum extensions
+
+vector<Integer> SpectrumExtensions(string filename);
+vector<Integer> SpectrumExtensions(string filename, Integer& Status);
 
 // Definition of the SpectrumII object. Just a wrap-up for a vector array of Spectrum objects
 
@@ -224,7 +269,7 @@ class phaII{
 
   Integer read(string filename);
   Integer read(string filename, Integer PHAnumber);
-  Integer read(string filename, Integer PHAnumber, vector<Integer> SpectrumNumber);
+  Integer read(string filename, Integer PHAnumber, vector<Integer>& SpectrumNumber);
 
   // Deep copy
 
@@ -355,8 +400,10 @@ class rmf{
   // Use the response matrix to generate random channel numbers for a photon 
   // of given energy  (and grating order).
 
-  vector<Integer> RandomChannels(const Real energy, const Integer NumberPhotons);
-  vector<Integer> RandomChannels(const Real energy, const Integer NumberPhotons, const Integer GratingOrder);
+  vector<Integer> RandomChannels(const Real energy, const Integer NumberPhotons, const vector<Real>& RandomNumber);
+  vector<Integer> RandomChannels(const vector<Real>& energy, const vector<Integer>& NumberPhotons, const vector<vector<Real> >& RandomNumber);
+  vector<Integer> RandomChannels(const Real energy, const Integer NumberPhotons, const Integer GratingOrder, const vector<Real>& RandomNumber);
+  vector<Integer> RandomChannels(const vector<Real>& energy, const vector<Integer>& NumberPhotons, const Integer GratingOrder, const vector<vector<Real> >& RandomNumber);
 
   // Display information about the spectrum
 
@@ -371,6 +418,7 @@ class rmf{
   void clearMatrix();
 
   // Check completeness and consistency of information in the rmf
+  // if there is a problem then return diagnostic in string
 
   string check();
 
@@ -382,6 +430,10 @@ class rmf{
 
   void compress(const Real threshold);
 
+  // Uncompress the rmf ie turn it into a full rectangular matrix
+
+  void uncompress();
+
   // Rebin in either channel or energy space
 
   Integer rebinChannels(grouping&);
@@ -390,6 +442,18 @@ class rmf{
   // Remaps response up or down in channels
 
   Integer shiftChannels(Integer Start, Integer Stop, Real Shift);
+  Integer shiftChannels(const Integer Start, const Integer End, const Real Shift, const Real Factor, bool useEnergyBounds);
+  Integer shiftChannels(const vector<Integer>& vStart, const vector<Integer>& vEnd, 
+			const vector<Real>& vShift, const vector<Real>& vFactor, bool useEnergyBounds);
+
+  Integer shiftEnergies(const Integer Start, const Integer End, const Real Shift, const Real Factor);
+  Integer shiftEnergies(const vector<Integer>& vStart, const vector<Integer>& vEnd, 
+			const vector<Real>& vShift, const vector<Real>& vFactor);
+
+  // Multiply by a vector which may not have the same energy binning as the response
+
+  Integer interpolateAndMultiply(const vector<Real>& energies, 
+				 const vector<Real>& factors);
 
   // Write response
 
@@ -428,8 +492,28 @@ class rmf{
 
   // add a row to the response using an input response vector and energy range.
 
-  void addRow(const vector<Real> Response, const Real eLow, const Real eHigh);
-  void addRow(const vector<vector<Real> > Response, const Real eLow, const Real eHigh, const vector<Integer> GratingOrder);
+  void addRow(const vector<Real>& Response, const Real eLow, const Real eHigh);
+  void addRow(const vector<vector<Real> >& Response, const Real eLow, const Real eHigh, const vector<Integer>& GratingOrder);
+
+  // substitute a row into the response using an input response vector and energy range.
+
+  void substituteRow(const Integer RowNumber, const vector<Real>& Response);
+  void substituteRow(const Integer RowNumber, const vector<vector<Real> >& Response, const vector<Integer>& GratingOrder);
+
+  // multiply a response by a vector and output vector of pha values. The input
+  // vector is assumed to be on the energy binning
+
+  vector<Real> multiplyByModel(const vector<Real>& model);
+
+  // return a vector containing the FWHM in channels for each energy. This does
+  // assume that the response has a well-defined main peak
+
+  vector<Real> estimatedFWHM();
+
+  // return a vector containing the FWHM in channels for each channel. This does
+  // assume that the response has a well-defined main peak
+
+  vector<Real> estimatedFWHMperChannel();
 
 };
 
@@ -443,9 +527,13 @@ class rmf{
 // the gaussian is assumed to be in the units of energyLow, energyHigh,
 // ChannelLowEnergy and ChannelHighEnergy
 
-void calcGaussResp(const Real width, const Real energyLow, const Real energyHigh, 
-                   const Real threshold, const vector<Real>& ChannelLowEnergy, 
-		   const vector<Real>& ChannelHighEnergy, vector<Real>& ResponseVector);
+void calcGaussResp(const Real width, const Real energy, const Real threshold, 
+		   const vector<Real>& ChannelLowEnergy, 
+		   const vector<Real>& ChannelHighEnergy, 
+		   vector<Real>& ResponseVector);
+
+size_t binarySearch(const Real energy, const vector<Real>& lowEnergy,
+		    const vector<Real>& highEnergy);
 
 // *************************************************************************
 // Class definitions for ResponseMatrixTranspose object
@@ -587,11 +675,19 @@ class arf{
 
   string check();
 
+  // Rebin
+
+  Integer rebin(grouping&);
+
   // Write arf
 
   Integer write(string filename);
   Integer write(string filename, string copyfilename);
   Integer write(string filename, string copyfilename, Integer HDUnumber);
+
+  // Multiply by a constant
+
+  arf& operator*=(const Real);
 
   // Add arfs
 
@@ -627,7 +723,7 @@ class arfII{
 
   Integer read(string filename);
   Integer read(string filename, Integer ARFnumber);
-  Integer read(string filename, Integer ARFnumber, vector<Integer> RowNumber);
+  Integer read(string filename, Integer ARFnumber, vector<Integer>& RowNumber);
 
   // Deep copy
 
@@ -664,6 +760,11 @@ class arfII{
   Integer write(string filename, string copyfilename, Integer HDUnumber);
 
 };
+
+// return the number of ARFs in a type II ARF extension
+
+Integer NumberofARFs(string filename, Integer HDUnumber);
+Integer NumberofARFs(string filename, Integer HDUnumber, Integer& Status);
 
 // *************************************************************************
 // class definition for grouping class. Useful for setting grouping arrays and binning
@@ -706,6 +807,25 @@ class grouping{
 
   Integer load(const vector<Integer>& StartBin, const vector<Integer>& EndBin, const vector<Integer>& BinFactor, const Integer Number, const Integer First); 
 
+  // set from quality and grouping vectors from a pha object
+
+  Integer loadFromVector(const vector<Integer>& QualVector, const vector<Integer>& GroupVector);
+
+  // set from a minimum with optional start and stop channel for the grouping
+
+  template <class T> Integer loadMin(const T Minimum, const vector<T>& Values); 
+  template <class T> Integer loadMin(const T Minimum, const Integer StartChannel, 
+		  const Integer EndChannel, const vector<T>& Values); 
+
+  // set using optimal binning based on the instrument FWHM.
+
+  Integer loadOptimal(const vector<Real>& FWHM, const vector<Integer>& Counts);
+
+  // set using optimal energy binning based on the instrument FWHM.
+  // note that this assumes that FWHM is that for each energy
+
+  Integer loadOptimalEnergy(const vector<Real>& FWHM, const vector<Integer>& Counts);
+  
   // return whether current element is start of new bin
 
   bool newBin(const Integer);
@@ -814,6 +934,8 @@ class table{
   bool isAdditive;
   vector<Real> Energies;
   string EnergyUnits;
+  Real LowEnergyLimit;
+  Real HighEnergyLimit;
 
   // constructor
 
@@ -845,7 +967,7 @@ class table{
 
   // display information about the table
 
-  string disp();
+  string disp(const bool headerOnly);
 
   // clear contents of table object (mainly useful for Python)
 

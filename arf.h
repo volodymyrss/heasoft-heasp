@@ -8,6 +8,10 @@
 #include "SPutils.h"
 #endif
 
+#ifndef HAVE_grouping
+#include "grouping.h"
+#endif
+
 #define HAVE_arf 1
 
 class arf{
@@ -63,11 +67,19 @@ class arf{
 
   string check();
 
+  // Rebin 
+
+  Integer rebin(grouping&);
+
   // Write arf
 
   Integer write(string filename);
   Integer write(string filename, string copyfilename);
   Integer write(string filename, string copyfilename, Integer HDUnumber);
+
+  // Multiply by a constant
+
+  arf& operator*=(const Real&);
 
   // Add arfs
 
@@ -82,8 +94,5 @@ class arf{
 // define this outside the class
 
 arf operator+ (const arf&, const arf&);
-
-// return the number of ARFs in a type II ARF extension
-
-Integer NumberofARFs(string filename, Integer HDUnumber);
-Integer NumberofARFs(string filename, Integer HDUnumber, Integer& Status);
+arf operator* (const arf&, const Real&);
+arf operator* (const Real&, const arf&);

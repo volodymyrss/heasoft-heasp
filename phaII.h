@@ -31,7 +31,7 @@ class phaII{
 
   Integer read(string filename);
   Integer read(string filename, Integer PHAnumber);
-  Integer read(string filename, Integer PHAnumber, vector<Integer> SpectrumNumber);
+  Integer read(string filename, Integer PHAnumber, vector<Integer>& SpectrumNumber);
 
   // Deep copy
 

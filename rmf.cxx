@@ -8,6 +8,10 @@
 #include "arf.h"
 #endif
 
+#ifndef HAVE_pha
+#include "pha.h"
+#endif
+
 #ifndef HAVE_grouping
 #include "grouping.h"
 #endif
@@ -25,6 +29,32 @@
 // default constructor
 
 rmf::rmf()
+  : FirstChannel(0),
+    NumberGroups(),
+    FirstGroup(),
+    FirstChannelGroup(),
+    NumberChannelsGroup(),
+    FirstElement(),
+    OrderGroup(),
+    LowEnergy(),
+    HighEnergy(),
+    Matrix(),
+    ChannelLowEnergy(),
+    ChannelHighEnergy(),
+    AreaScaling(1.0),
+    ResponseThreshold(0.0),
+    EnergyUnits("keV"),
+    RMFUnits(" "),
+    ChannelType("PI"),
+    RMFVersion("1.1.0"),
+    EBDVersion("1.1.0"),
+    Telescope(" "),
+    Instrument(" "),
+    Detector(" "),
+    Filter(" "),
+    RMFType(" "),
+    RMFExtensionName("MATRIX"),
+    EBDExtensionName("EBOUNDS")
 {
 }
 
@@ -33,6 +63,18 @@ rmf::rmf()
 
 rmf::~rmf()
 {
+  // clear out the vectors and force reallocation
+  vector<Integer>().swap(NumberGroups);
+  vector<Integer>().swap(FirstGroup);
+  vector<Integer>().swap(FirstChannelGroup);
+  vector<Integer>().swap(NumberChannelsGroup);
+  vector<Integer>().swap(FirstElement);
+  vector<Integer>().swap(OrderGroup);
+  vector<Real>().swap(LowEnergy);
+  vector<Real>().swap(HighEnergy);
+  vector<Real>().swap(Matrix);
+  vector<Real>().swap(ChannelLowEnergy);
+  vector<Real>().swap(ChannelHighEnergy);
 }
 
 // reading Matrix and Channel bounds extensions from RMF file. 
@@ -211,7 +253,7 @@ Integer rmf::readMatrix(string filename, Integer RMFnumber)
 
   AreaScaling = SPreadKey(rmf, "EFFAREA", (Real)1.0);
 
-  ResponseThreshold = SPreadKey(rmf, "LO_THRES", (Real)1.0);
+  ResponseThreshold = SPreadKey(rmf, "LO_THRES", (Real)0.0);
 
   Integer Nrows;
   Nrows = SPreadKey(rmf, "NAXIS2", (Integer)0);
@@ -560,9 +602,8 @@ vector<Real> rmf::RowValues(Integer EnergyBin)
 
 vector<Real> rmf::RowValues(Integer EnergyBin, Integer GratingOrder)
 {
-  vector<Real> values(NumberChannels());
 
-  for (size_t i=0; i<values.size(); i++) values[i] = 0.0;
+  vector<Real> values(NumberChannels(),0.0);
 
   // Loop round response groups for this energy
 
@@ -572,12 +613,15 @@ vector<Real> rmf::RowValues(Integer EnergyBin, Integer GratingOrder)
     size_t ivec = FirstChannelGroup[igroup] - FirstChannel;
     size_t ielt = FirstElement[igroup];
 
+
     // loop round elements in this group - adding them to the output array
 
     if ( ( OrderGroup.size() > 0 && OrderGroup[igroup] == GratingOrder ) 
 	 || GratingOrder == -999 ) {
 
-      for (size_t j=0; j<(size_t)NumberChannelsGroup[igroup]; j++) values[ivec+j] += Matrix[ielt+j];
+      for (size_t j=0; j<(size_t)NumberChannelsGroup[igroup]; j++) {
+	values[ivec+j] += Matrix[ielt+j];
+      }
 
     }
 
@@ -588,96 +632,140 @@ vector<Real> rmf::RowValues(Integer EnergyBin, Integer GratingOrder)
 
 // Return vector of randomly generated channel numbers for a particular energy  
 
-vector<Integer> rmf::RandomChannels(const Real energy, const Integer NumberPhotons)
+vector<Integer> rmf::RandomChannels(const Real energy, const Integer NumberPhotons, const vector<Real>& RandomNumber)
 {
   Integer GratingOrder(-999);
 
-  return this->RandomChannels(energy, NumberPhotons, GratingOrder);
+  return this->RandomChannels(energy, NumberPhotons, GratingOrder, RandomNumber);
+}
+
+// Return vector of randomly generated channel numbers for a set of energies
+
+vector<Integer> rmf::RandomChannels(const vector<Real>& energy, const vector<Integer>& NumberPhotons, const vector<vector<Real> >& RandomNumber)
+{
+  Integer GratingOrder(-999);
+
+  return this->RandomChannels(energy, NumberPhotons, GratingOrder, RandomNumber);
 }
 
 // Return vector of randomly generated channel numbers for a particular energy and
 // grating order. Use GratingOrder = -999 as special case to ignore grating information
 
-vector<Integer> rmf::RandomChannels(const Real energy, const Integer NumberPhotons, const Integer GratingOrder)
+vector<Integer> rmf::RandomChannels(const Real energy, const Integer NumberPhotons, const Integer GratingOrder, const vector<Real>& RandomNumber)
 {
-  vector<Integer> channel(NumberPhotons);
+  vector<Real> energyArray(1,energy);
+  vector<Integer> NPhotArray(1,NumberPhotons);
+  vector<vector<Real> > RandomNumberArray(1,RandomNumber);
+
+  return this->RandomChannels(energyArray, NPhotArray, GratingOrder, RandomNumberArray);
+}
+
+// Return vector of randomly generated channel numbers for a set of energies and a
+// grating order. Use GratingOrder = -999 as special case to ignore grating information
+
+vector<Integer> rmf::RandomChannels(const vector<Real>& energy, const vector<Integer>& NumberPhotons, const Integer GratingOrder, const vector<vector<Real> >& RandomNumber)
+{
+  Integer NumberOut(0);
+  for (size_t i=0; i<NumberPhotons.size(); i++) NumberOut += NumberPhotons[i];
+  vector<Integer> channel(NumberOut);
 
   // initialize the output array to -1s in the event that either the input energy is
   // outside the response range or that the response does not sum to unity and events
   // can fall off the end of the channels.
 
-  for (size_t i=0; i<(size_t)NumberPhotons; i++) channel[i] = -1;
+  for (size_t i=0; i<(size_t)NumberOut; i++) channel[i] = -1;
 
-  size_t lower = 0;
-  size_t upper = LowEnergy.size() - 1;
+  // loop round the energies
 
-  // trap the case of the energy being outside the response range
+  size_t iout(0); 
+  Real Emin = LowEnergy[0];
+  Real Emax = HighEnergy[HighEnergy.size()-1];
 
-  if ( energy < LowEnergy[lower] || energy > HighEnergy[upper] ) return channel;
+  for (size_t i=0; i<energy.size(); i++) {
 
-  // find the energy bin associated with the input energy - assumes the energies are in increasing order
+    // trap the case of the energy being outside the response range
 
-  size_t middle, energybin;
-  while ( upper - lower > 1 ) {
-    middle = (upper + lower)/2;
-    if ( energy < HighEnergy[middle] ) {
-      upper = middle;
-    } else {
-      lower = middle;
-    }
-  }
-  if ( energy > HighEnergy[lower] ) {
-    energybin = upper;
-  } else {
-    energybin = lower;
-  }
+    if ( energy[i] >= Emin && energy[i] <= Emax ) {
 
-  // generate an array of size channel each element of which is the integrated response up to and
-  // including that channel
+      // find the energy bin associated with the input energy 
+      // - assumes the energies are in increasing order
 
-  vector<Real> sumresponse(ChannelHighEnergy.size());
-  for (size_t j=0; j<ChannelHighEnergy.size(); j++) sumresponse[j] = 0.0;
-
-  sumresponse = this->RowValues(energybin, GratingOrder);
-
-  for (size_t i=1; i<sumresponse.size(); i++) sumresponse[i] += sumresponse[i-1];
-
-  // generate random numbers between 0 and 1
-
-  vector<Real> RandomNumber(NumberPhotons);
-  for (size_t i=0; i<(size_t)NumberPhotons; i++) RandomNumber[i] = (Real) HDmtDrand();
-
-  // loop round the photons
-
-  for (size_t i=0; i<(size_t)NumberPhotons; i++) {
-
-    // find the array element containing this random number. note that we do
-    // not assume that the total response sums to 1 - if the random number
-    // exceeds the total response then we assume that the event fell off the
-    // end of the channel array and return a -1
-
-    lower = 0;
-    upper = ChannelHighEnergy.size() - 1;
-    if ( RandomNumber[i] <= sumresponse[upper] ) {
+      size_t lower = 0;
+      size_t upper = HighEnergy.size()-1;
+      size_t middle, energybin;
       while ( upper - lower > 1 ) {
 	middle = (upper + lower)/2;
-	if ( RandomNumber[i] < sumresponse[middle] ) {
+	if ( energy[i] < HighEnergy[middle] ) {
 	  upper = middle;
 	} else {
 	  lower = middle;
 	}
       }
-      if ( RandomNumber[i] > sumresponse[lower] ) {
-	channel[i] = upper;
+      if ( energy[i] > HighEnergy[lower] ) {
+	energybin = upper;
       } else {
-	channel[i] = lower;
+	energybin = lower;
       }
 
-      // correct the channel number for the first channel number in use in the response matrix
+      // generate an array of size channel each element of which is the integrated 
+      // response up to and including that channel
 
-      channel[i] += FirstChannel;
+      vector<Real> sumresponse(ChannelHighEnergy.size());
+      for (size_t j=0; j<ChannelHighEnergy.size(); j++) sumresponse[j] = 0.0;
+
+      sumresponse = this->RowValues(energybin, GratingOrder);
+
+      for (size_t j=1; j<sumresponse.size(); j++) sumresponse[j] += sumresponse[j-1];
+
+      // loop round the photons
+
+      for (size_t j=0; j<(size_t)RandomNumber[i].size(); j++) {
+
+	Real random = RandomNumber[i][j];
+
+	// find the array element containing this random number. note that we do
+	// not assume that the total response sums to 1 - if the random number
+	// exceeds the total response then we assume that the event fell off the
+	// end of the channel array and return a -1
+
+	lower = 0;
+	upper = ChannelHighEnergy.size() - 1;
+	if ( random <= sumresponse[upper] ) {
+	  while ( upper - lower > 1 ) {
+	    middle = (upper + lower)/2;
+	    if ( random < sumresponse[middle] ) {
+	      upper = middle;
+	    } else {
+	      lower = middle;
+	    }
+	  }
+	  if ( random > sumresponse[lower] ) {
+	    channel[iout] = upper;
+	  } else {
+	    channel[iout] = lower;
+	  }
+
+	  // correct the channel number for the first channel number in use in 
+	  // the response matrix
+
+	  channel[iout] += FirstChannel;
+
+	}
+	iout++;
+
+	// end loop over photons
+      }
+
+    } else {
+
+      // if the current energy is outside the response range then increment iout by
+      // the number of photons we would be simulating
+
+      iout += NumberPhotons[i];
 
     }
+
+    // end loop over energies
 
   }
 
@@ -751,16 +839,8 @@ void rmf::clear()
 {
   FirstChannel = 0;
 
-  NumberGroups.clear();
-  FirstGroup.clear();
-  FirstChannelGroup.clear();
-  NumberChannelsGroup.clear();
-  FirstElement.clear();
-  OrderGroup.clear();
+  this->clearMatrix();
 
-  LowEnergy.clear();
-  HighEnergy.clear();
-  Matrix.clear();
   ChannelLowEnergy.clear();
   ChannelHighEnergy.clear();
 
@@ -864,29 +944,36 @@ string rmf::check()
 
   // check that arrays have sensible values
 
-  for (size_t i=0; i<NumberGroups.size(); i++) {
-    if ( NumberGroups[i] < 0 ) {
-      outstr << "NumberGroups has invalid value (" << NumberGroups[i] 
-	   << ") for element " << i << endl;
-    }
-    if ( FirstGroup[i] < 0 || FirstGroup[i] >= (Integer)NumberChannelsGroup.size() ) {
-      outstr << "FirstGroup has invalid value (" << FirstGroup[i] 
-	   << ") for element " << i << endl;
+  if ( NumberChannelsGroup.size() == 0 ) {
+    outstr << "No groups have any channels - something went very wrong" << endl;
+  } else {
+    for (size_t i=0; i<NumberGroups.size(); i++) {
+      if ( NumberGroups[i] < 0 ) {
+	outstr << "NumberGroups has invalid value (" << NumberGroups[i] 
+	       << ") for energy bin " << i << endl;
+      }
+      if ( FirstGroup[i] < 0 || FirstGroup[i] >= (Integer)NumberChannelsGroup.size() ) {
+	outstr << "FirstGroup has invalid value (" << FirstGroup[i] 
+	       << ") for group " << i << ". Should be >= 0 and < " 
+	       << NumberChannelsGroup.size() << endl;
+      }
     }
   }
 
   for (size_t i=0; i<FirstChannelGroup.size(); i++) {
     if ( FirstChannelGroup[i] < FirstChannel || FirstChannelGroup[i] >= (Integer)ChannelLowEnergy.size() ) {
       outstr << "FirstChannelGroup has invalid value (" << FirstChannelGroup[i] 
-	   << ") for element " << i << endl;
+	     << ") for group " << i <<  ". Should be >= " << FirstChannel << " and < " 
+	     << ChannelLowEnergy.size() <<endl;
     }
-    if ( NumberChannelsGroup[i] < 0 || NumberChannelsGroup[i] >= (Integer)ChannelLowEnergy.size() ) {
+    if ( NumberChannelsGroup[i] < 0 || NumberChannelsGroup[i] > (Integer)ChannelLowEnergy.size() ) {
       outstr << "NumberChannelsGroup has invalid value (" << NumberChannelsGroup[i] 
-	   << ") for element " << i << endl;
+	     << ") for group " << i <<  ". Should be >= 0 and <= " 
+	     << ChannelLowEnergy.size() <<endl;
     }
     if ( FirstElement[i] < 0 ) {
       outstr << "FirstElement has invalid value (" << FirstElement[i] 
-	   << ") for element " << i << endl;
+	   << ") for group " << i << endl;
     }
   }      
 
@@ -984,6 +1071,14 @@ void rmf::compress(const Real threshold)
 
   ResponseThreshold = threshold;
 
+  return;
+}
+
+void rmf::uncompress()
+{
+  // can do this just by calling compress with a threshold of zero.
+
+  this->compress(0.0);
   return;
 }
 
@@ -1158,17 +1253,49 @@ Integer rmf::rebinEnergies(grouping& GroupInfo)
 
 // Shift channels up or down.
 
-Integer rmf::shiftChannels(Integer Start, Integer End, Real Shift)
+Integer rmf::shiftChannels(const Integer Start, const Integer End, const Real Shift)
+{
+  Real Factor(1.0);
+  bool useEnergyBounds(false);
+  return this->shiftChannels(Start, End, Shift, Factor, useEnergyBounds);
+}
+
+Integer rmf::shiftChannels(const Integer Start, const Integer End, const Real Shift, const Real Factor, bool useEnergyBounds)
+{
+  vector<Integer> vStart(1,Start);
+  vector<Integer> vEnd(1,End);
+  vector<Real> vShift(1,Shift);
+  vector<Real> vFactor(1,Factor);
+  return this->shiftChannels(vStart, vEnd, vShift, vFactor, useEnergyBounds);
+}
+
+Integer rmf::shiftChannels(const vector<Integer>& vStart, const vector<Integer>& vEnd, const vector<Real>& vShift, const vector<Real>& vFactor, bool useEnergyBounds)
 {
 
-  // switch Start and End to zero-based
+  size_t Nchan(NumberChannels());
+  size_t Nener(NumberEnergyBins());
 
-  Integer Start0 = Start - FirstChannel;
-  Integer End0 = End - FirstChannel;
+  // First set up vectors describing how to make the new matrix
+  // fromChannel[i] is the list of channels from which the new channel i is calculated
+  // fromFraction[i] is the list of fractions corresponding to fromChannel.
 
-  Integer N(NumberChannels());
+  vector<vector<size_t> > fromChannel(Nchan);
+  vector<vector<Real> > fromFraction(Nchan);
 
-  if ( End0 < 0 || Start0 > N-1 ) return(OK);
+  if ( useEnergyBounds ) {
+    SPcalcShift(ChannelLowEnergy, ChannelHighEnergy, vStart, vEnd, vShift, vFactor, 
+		fromChannel, fromFraction);
+  } else {
+    // Shift is in terms of channel number so define the Low and High as the channel 
+    //number -/+ 0.5
+    vector<Real> Low(Nchan);
+    vector<Real> High(Nchan);
+    for (size_t i=0; i<Nchan; i++) {
+      Low[i] = i + FirstChannel - 0.5;
+      High[i] = i + FirstChannel + 0.5;
+    }
+    SPcalcShift(Low, High, vStart, vEnd, vShift, vFactor, fromChannel, fromFraction);
+  }
 
   // Set up temporary object to store the output rmf and set its threshold and first channel
 
@@ -1176,45 +1303,31 @@ Integer rmf::shiftChannels(Integer Start, Integer End, Real Shift)
   work.ResponseThreshold = ResponseThreshold;
   work.FirstChannel = FirstChannel;
 
-  // Temporary array for the response for a given energy
+  // Loop over energies accumulating the new response
 
-  vector<Real> Response(NumberChannels());
+  for (size_t iEnergyBin=0; iEnergyBin<Nener; iEnergyBin++) {
 
-  Integer IntShift = (Integer)(abs(Shift)+1);
-  Real FracShift = abs(Shift) - (IntShift-1);
-
-
-  // Loop over energies
-
-  for (size_t i=0; i<(size_t)LowEnergy.size(); i++) {
-
+    vector<Real> Response(Nchan);
+    vector<Real> OutResponse(Nchan, 0.0);
+    
     // expand response matrix into a channel array for this energy
 
-    Response = this->RowValues(i);
+    Response = this->RowValues(iEnergyBin);
 
-    vector<Real> OutResponse(N, 0.0);
+    // Construct the output response using the information in fromChannel
+    // and fromFraction
 
-    // shift the response for the energy
+    for ( size_t iChan=0; iChan<Nchan; iChan++) {
 
-    Integer Ch = Start0;
-
-    Integer Step = 1;
-    if ( Shift < 0.0 ) Step = -1;
-      
-    while ( Ch <= End0 ) {
-      Integer NewCh = Ch + Step*IntShift;
-      if ( NewCh >= 0 && NewCh < N ) {
-	OutResponse[NewCh] += FracShift * Response[Ch];
+      for (size_t j=0; j<fromChannel[iChan].size(); j++) {
+	OutResponse[iChan] += fromFraction[iChan][j]*Response[fromChannel[iChan][j]];
       }
-      if ( NewCh-Step >= 0 && NewCh-Step < N ) {
-	OutResponse[NewCh-Step] += (1-FracShift) * Response[Ch];
-      }
-      Ch++;
+
     }
 
     // update the compressed response arrays for this energy bin
 
-    work.addRow(OutResponse, LowEnergy[i], HighEnergy[i]);
+    work.addRow(OutResponse, LowEnergy[iEnergyBin], HighEnergy[iEnergyBin]);
 
     // end loop over energies
 
@@ -1244,6 +1357,185 @@ Integer rmf::shiftChannels(Integer Start, Integer End, Real Shift)
 
   return(OK);
 }
+
+// Shift energies up or down.
+
+Integer rmf::shiftEnergies(const Integer Start, const Integer End, const Real Shift, const Real Factor)
+{
+  vector<Integer> vStart(1,Start);
+  vector<Integer> vEnd(1,End);
+  vector<Real> vShift(1,Shift);
+  vector<Real> vFactor(1,Factor);
+  return this->shiftEnergies(vStart, vEnd, vShift, vFactor);
+}
+
+Integer rmf::shiftEnergies(const vector<Integer>& vStart, const vector<Integer>& vEnd, const vector<Real>& vShift, 
+			   const vector<Real>& vFactor)
+{
+
+  // Note that Start and End are zero-based
+
+  size_t Nchan(NumberChannels());
+  size_t Nener(NumberEnergyBins());
+
+  // Set up vectors describing how to make the new matrix
+  // fromRow[i] is the list of rows contributing to row i
+  // and Fraction[i] is the fractional contribution for each row
+
+  vector<vector<size_t> > fromRow(Nener);
+  vector<vector<Real> > fromFraction(Nener);
+
+  SPcalcShift(LowEnergy, HighEnergy, vStart, vEnd, vShift, vFactor, fromRow, fromFraction);
+ 
+  // Set up temporary object to store the output rmf and set its threshold 
+  // and first channel
+
+  rmf work;
+  work.ResponseThreshold = ResponseThreshold;
+  work.FirstChannel = FirstChannel;
+
+  // Loop over energies accumulating the new response
+
+  for (size_t iEnergyBin=0; iEnergyBin<Nener; iEnergyBin++) {
+
+    vector<Real> newRow(Nchan,0.0);
+
+    // Construct the row from the contributions set in fromRow and fromFraction
+
+    for (size_t i=0; i<fromRow[iEnergyBin].size(); i++) {
+
+      vector<Real> oldRow(Nchan);
+      size_t oldRowIndex = fromRow[iEnergyBin][i];
+      oldRow = this->RowValues(oldRowIndex);
+      Real frac = fromFraction[iEnergyBin][i];
+      for (size_t k=0; k<Nchan; k++) newRow[k] += frac*oldRow[k];
+
+    }
+
+    work.addRow(newRow, LowEnergy[iEnergyBin], HighEnergy[iEnergyBin]);
+
+  }
+
+  // copy new response arrays into current response
+
+  NumberGroups.resize(work.NumberGroups.size());
+  FirstChannelGroup.resize(work.FirstChannelGroup.size());
+  NumberChannelsGroup.resize(work.NumberChannelsGroup.size());
+  Matrix.resize(work.Matrix.size());
+
+  for (size_t i=0; i<NumberGroups.size(); i++) {
+    NumberGroups[i] = work.NumberGroups[i];
+  }
+  for (size_t i=0; i<NumberChannelsGroup.size(); i++) {
+    FirstChannelGroup[i] = work.FirstChannelGroup[i];
+    NumberChannelsGroup[i] = work.NumberChannelsGroup[i];
+  }
+  for (size_t i=0; i<Matrix.size(); i++) {
+    Matrix[i] = work.Matrix[i];
+  }
+
+  // reset the FirstGroup and FirstElement arrays
+
+  this->update();
+
+  return(OK);
+}
+
+// Multiply by a vector which may not have the same energy binning as the response
+
+Integer rmf::interpolateAndMultiply(const vector<Real>& inputEnergies, 
+			       const vector<Real>& inputFactors)
+{
+
+  size_t nInputEnergies(inputEnergies.size());
+
+  // loop over response energies
+
+  for (size_t i=0; i<LowEnergy.size(); i++) {
+
+    vector<Real> cx(2);
+    cx[0] = LowEnergy[i];
+    cx[1] = HighEnergy[i];
+
+    // the multiplicative factor will be placed in factor
+
+    Real factor;
+
+    // If energy is above input energy data then put factor equal to 0
+
+    if ( cx[0] >= inputEnergies[nInputEnergies-1] ) {
+
+      factor = 0;
+
+    } else {
+
+      // find first input energy above bottom of bin and place in ib+1
+
+      size_t ib = 0;
+      while ( inputEnergies[ib+1] >= cx[0] ) ib++;
+
+      // find first input energy above top of bin and place in ia+1
+
+      size_t ia = ib + 1;
+      if ( ia >= nInputEnergies ) ia--;
+      while ( inputEnergies[ia] < cx[1] && ia < nInputEnergies-1 ) ia++;
+
+      // calculate number of tabulated values for this bin.
+
+      size_t nValues = ia - ib;
+
+      // calculate interpolated values at top and bottom of bin
+
+      vector<Real> cy(nValues+1);
+
+      cy[0] = inputFactors[ib] + (inputFactors[ib+1]-inputFactors[ib])
+	*(cx[0]-inputEnergies[ib])/(inputEnergies[ib+1]-inputEnergies[ib]);
+      cy[nValues] = inputFactors[ia-1] + (inputFactors[ia]-inputFactors[ia-1])
+	*(cx[1]-inputEnergies[ia-1])/(inputEnergies[ia]-inputEnergies[ia-1]);
+
+      // if no input energies in current bin then factor is mean of these two
+
+      if ( nValues <= 1 ) {
+
+	factor = 0.5*(cy[0]+cy[1]);
+
+      } else {
+
+	// otherwise factor is energy-weighted mean
+
+	cx.resize(nValues+1);
+	cx[0] = LowEnergy[i];
+	cx[1] = HighEnergy[i];
+
+	cx[nValues] = cx[1];
+	for (size_t k=1; k<nValues-2; k++) {
+	  cx[k] = inputEnergies[ib+k];
+	  cy[k] = inputFactors[ib+k];
+	}
+	factor = 0.0;
+	for (size_t k=1; k<nValues; k++) {
+	  factor += 0.5*(cy[k]+cy[k-1])*(cx[k]-cx[k-1]);
+	}
+	factor /= (HighEnergy[i]-LowEnergy[i]);
+
+      }
+
+    }
+
+    // multiply response for this energy by the factor
+
+    for (size_t ig=FirstGroup[i]; ig<FirstGroup[i]+NumberGroups[i]; ig++) {
+      for (size_t irsp=FirstElement[ig]; irsp<FirstElement[ig]+NumberChannelsGroup[ig]; irsp++) {
+	Matrix[irsp] *= factor;
+      }
+    }
+
+  }
+
+  return(OK);
+
+}
+
 
 // Write response matrix and channel bounds extensions. If file already exists then append.
 
@@ -1331,12 +1623,8 @@ Integer rmf::writeMatrix(string filename)
 
   vector<vector<Integer> > fchan(Nrows), nchan(Nrows);
   for (size_t i=0; i<(size_t)Nrows; i++) {
-    fchan[i].resize(MaxGroups);
-    nchan[i].resize(MaxGroups);
-    for (size_t j=0; j<(size_t)MaxGroups; j++) {
-      fchan[i][j] = 0;
-      nchan[i][j] = 0;
-    }
+    fchan[i].resize(NumberGroups[i]);
+    nchan[i].resize(NumberGroups[i]);
     for (size_t j=0; j<(size_t)NumberGroups[i]; j++) {
       fchan[i][j] = FirstChannelGroup[j+FirstGroup[i]];
       nchan[i][j] = NumberChannelsGroup[j+FirstGroup[i]];
@@ -1359,19 +1647,15 @@ Integer rmf::writeMatrix(string filename)
 
   // if required set up the order vector array
 
-  vector<vector<Integer> > order(Nrows);
+  vector<vector<Integer> > order;
   if ( OrderGroup.size() > 0 ) {
-
+    order.resize(Nrows);
     for (size_t i=0; i<(size_t)Nrows; i++) { 
-      order[i].resize(MaxGroups);
-      for (size_t j=0; j<(size_t)MaxGroups; j++) {
-	order[i][j] = 0;
-      }
+      order[i].resize(NumberGroups[i]);
       for (size_t j=0; j<(size_t)NumberGroups[i]; j++) {
 	order[i][j] = OrderGroup[j+FirstGroup[i]];
       }
     }
-
   }
 
   // set up the column descriptors for those attributes which need to be 
@@ -1393,26 +1677,30 @@ Integer rmf::writeMatrix(string filename)
   RepeatStream << MaxGroups;
   string Repeat(RepeatStream.str());
 
+  bool isvector, needCol;
+
   ttype.push_back("F_CHAN");
-  if ( MaxGroups > 1 ) {
-    tform.push_back(Repeat+"J");
+  needCol = SPneedCol(fchan, isvector);
+  if ( isvector ) {
+    tform.push_back("PJ("+Repeat+")");
   } else {
     tform.push_back("J");
   }
   tunit.push_back(" ");
 
   ttype.push_back("N_CHAN");
-  if ( MaxGroups > 1 ) {
-    tform.push_back(Repeat+"J");
+  needCol = SPneedCol(nchan, isvector);
+  if ( isvector ) {
+    tform.push_back("PJ("+Repeat+")");
   } else {
     tform.push_back("J");
   }
   tunit.push_back(" ");
      
-  if ( SPneedCol(OrderGroup) ) {
+  if ( SPneedCol(order, isvector) ) {
     ttype.push_back("ORDER");
-    if ( MaxGroups > 1 ) {
-      tform.push_back(Repeat+"J");
+    if ( isvector ) {
+      tform.push_back("PJ("+Repeat+")");
     } else {
       tform.push_back("J");
     }
@@ -1424,7 +1712,8 @@ Integer rmf::writeMatrix(string filename)
   Repeat = RepeatStream.str();
 
   ttype.push_back("MATRIX");
-  if ( MaxElts > 1 ) {
+  needCol = SPneedCol(elements, isvector);
+  if ( isvector ) {
     tform.push_back("PE("+Repeat+")");
   } else {
     tform.push_back("E");
@@ -1523,6 +1812,10 @@ Integer rmf::writeMatrix(string filename, string copyfilename, Integer HDUnumber
   if ( Status != OK ) return(Status);
 
   Status = SPcopyKeys(copyfilename, filename, "MATRIX", HDUnumber);
+  if ( Status != OK ) {
+    Status = OK;
+    Status = SPcopyKeys(copyfilename, filename, "SPECRESP MATRIX", "MATRIX", HDUnumber, HDUnumber);
+  }
 
   return(Status);
 }
@@ -1597,13 +1890,13 @@ Integer rmf::writeChannelBounds(string filename)
 
   vector<Real> Channel(NumberChannels());
   for (size_t i=0; i<(size_t)NumberChannels(); i++) Channel[i] = i + FirstChannel;
-  SPwriteCol(ebd, "CHANNEL", Channel);
+  SPwriteCol(ebd, "CHANNEL", Channel, true);
 
   // Write the E_MIN and E_MAX arrays - if an array is of size 1 or all the 
   // same value it will be written as a keyword
 
-  SPwriteCol(ebd, "E_MIN", ChannelLowEnergy);
-  SPwriteCol(ebd, "E_MAX", ChannelHighEnergy);
+  SPwriteCol(ebd, "E_MIN", ChannelLowEnergy, true);
+  SPwriteCol(ebd, "E_MAX", ChannelHighEnergy, true);
 
   return(OK);
 }
@@ -1667,6 +1960,15 @@ rmf& rmf::operator*=(const arf& a)
 
   return *this;
 }
+
+// Multiply by a constant factor
+
+rmf& rmf::operator*=(const Real& f)
+{
+  for (size_t i=0; i<Matrix.size(); i++) Matrix[i] *= f;
+  return *this;
+}
+
 
 rmf& rmf::operator+=(const rmf& r)
 {
@@ -1817,14 +2119,10 @@ Integer rmf::convertUnits()
     }
   }
 
-  // if necessary reverse channel low and high energies arrays
+  // if necessary reverse the rows in the response
 
-  for (size_t i=0; i<ChannelLowEnergy.size(); i++) {
-    if ( ChannelLowEnergy[i] > ChannelHighEnergy[i] ) {
-      Real temp(ChannelHighEnergy[i]);
-      ChannelHighEnergy[i] = ChannelLowEnergy[i];
-      ChannelLowEnergy[i] = temp;
-    }
+  if (LowEnergy[0] > HighEnergy[HighEnergy.size()-1]) {
+    this->reverseRows();
   }
 
   EnergyUnits = "keV";
@@ -1884,7 +2182,7 @@ void rmf::reverseRows()
 }
 
 
-void rmf::addRow(const vector<Real> Response, const Real eLow, const Real eHigh) 
+void rmf::addRow(const vector<Real>& Response, const Real eLow, const Real eHigh) 
 {
 
   Integer NGroups(0);
@@ -1946,8 +2244,8 @@ void rmf::addRow(const vector<Real> Response, const Real eLow, const Real eHigh)
 
 // version of addRow for multiple grating orders
 
-void rmf::addRow(const vector<vector<Real> > Response, const Real eLow, const Real eHigh,
-		 const vector<Integer> GratingOrder) 
+void rmf::addRow(const vector<vector<Real> >& Response, const Real eLow, const Real eHigh,
+		 const vector<Integer>& GratingOrder) 
 {
 
   Integer NGroups(0);
@@ -2017,6 +2315,328 @@ void rmf::addRow(const vector<vector<Real> > Response, const Real eLow, const Re
 
 }
 
+void rmf::substituteRow(const Integer RowNumber, const vector<Real>& Response) 
+{
+
+  // construct compressed format arrays for the input response vector
+
+  Integer NGroups(0);
+  vector<Integer> FChan;
+  vector<Integer> NChan;
+  vector<Real> MatrixValues;
+  bool inGroup(false);
+
+  for ( size_t j=0; j<Response.size(); j++ ) {
+
+    if ( Response[j] >= ResponseThreshold ) {
+
+      // if not in a response group then start a new one
+
+      if ( !inGroup ) {
+
+	NGroups++;
+
+	FChan.push_back(j+FirstChannel);
+	NChan.push_back(1);
+	MatrixValues.push_back(Response[j]);
+
+	inGroup = true;
+
+	// otherwise add next response to this group
+
+      } else {
+
+	NChan[NChan.size()-1]++;
+	MatrixValues.push_back(Response[j]);
+
+      }
+
+      // if response below threshold then end group if it is open
+
+    } else {
+
+      if ( inGroup ) inGroup = false;
+
+    }
+
+    // end loop over channels
+
+  }
+
+  // now the difficult bit. We need to remove the old values and insert the new values
+  // using the vector erase and insert methods automatically shuffles elements appropriately
+  // and resizes
+
+  size_t FirstGroupIndex(0);
+  size_t FirstMatrixIndex(0);
+
+  if ( NumberGroups[RowNumber] > 0 ) {
+
+    FirstGroupIndex = FirstGroup[RowNumber];
+    size_t LastGroupIndex = FirstGroupIndex + NumberGroups[RowNumber] - 1;
+    size_t LastMatrixIndex = FirstMatrixIndex;
+    for (size_t i=FirstGroupIndex; i<=LastGroupIndex; i++) {
+      LastMatrixIndex += NumberChannelsGroup[i];
+    }
+
+    // erase old groups from FirstChannelGroup and NumberChannelsGroup
+
+    FirstChannelGroup.erase(FirstChannelGroup.begin()+FirstGroupIndex, FirstChannelGroup.begin()+LastGroupIndex);
+    NumberChannelsGroup.erase(NumberChannelsGroup.begin()+FirstGroupIndex, NumberChannelsGroup.begin()+LastGroupIndex);
+
+    // erase old elements from Matrix
+
+    Matrix.erase(Matrix.begin()+FirstMatrixIndex, Matrix.begin()+LastMatrixIndex);
+
+  }
+
+  // insert the new groups into FirstChannelGroup and NumberChannelsGroup
+
+  vector<Integer>::iterator it = FirstChannelGroup.begin() + FirstGroupIndex;
+  if ( FChan.size() > 0 ) FirstChannelGroup.insert(it, FChan.begin(), FChan.end());
+  it = NumberChannelsGroup.begin() + FirstGroupIndex;
+  if ( NChan.size() > 0 ) NumberChannelsGroup.insert(it, NChan.begin(), NChan.end());
+
+  // insert the new matrix elements
+
+  vector<Real>::iterator rit = Matrix.begin()+FirstMatrixIndex;
+  if ( MatrixValues.size() > 0 ) Matrix.insert(rit, MatrixValues.begin(), MatrixValues.end());
+
+  // reset the number of groups for this row
+
+  NumberGroups[RowNumber] = NGroups;
+
+  // update the FirstGroup and FirstElement arrays
+
+  this->update();
+
+  return;
+
+}
+
+// version of substituteRow for multiple grating orders
+
+void rmf::substituteRow(const Integer RowNumber, const vector<vector<Real> >& Response,
+		 const vector<Integer>& GratingOrder) 
+{
+
+  // construct compressed format arrays for the input response vector
+
+  Integer NGroups(0);
+  vector<Integer> FChan;
+  vector<Integer> NChan;
+  vector<Integer>GOrder;
+  vector<Real> MatrixValues;
+
+  // loop over grating orders
+
+  for ( size_t i=0; i<Response.size(); i++ ) {
+
+    bool inGroup(false);
+
+    for ( size_t j=0; j<Response[i].size(); j++ ) {
+
+      if ( Response[i][j] >= ResponseThreshold ) {
+
+	// if not in a response group then start a new one
+
+	if ( !inGroup ) {
+
+	  NGroups++;
+
+	  FChan.push_back(j+FirstChannel);
+	  NChan.push_back(1);
+	  MatrixValues.push_back(Response[i][j]);
+	  GOrder.push_back(GratingOrder[j]);
+
+	  inGroup = true;
+
+	  // otherwise add next response to this group
+
+	} else {
+
+	  NChan[NChan.size()-1]++;
+	  MatrixValues.push_back(Response[i][j]);
+
+	}
+
+	// if response below threshold then end group if it is open
+
+      } else {
+
+	if ( inGroup ) inGroup = false;
+
+      }
+      
+      // end loop over channels
+
+    }
+
+    // end loop over orders
+
+  }
+
+  // now the difficult bit. We need to remove the old values and insert the new values
+  // using the vector erase and insert methods automatically shuffles elements appropriately
+  // and resizes
+
+  size_t FirstGroupIndex = FirstGroup[RowNumber];
+  size_t LastGroupIndex = FirstGroupIndex + NumberGroups[RowNumber] - 1;
+  size_t FirstMatrixIndex = FirstElement[FirstGroupIndex];
+  size_t LastMatrixIndex = FirstMatrixIndex;
+  for (size_t i=FirstGroupIndex; i<=LastGroupIndex; i++) {
+    LastMatrixIndex += NumberChannelsGroup[i];
+  }
+
+  // erase old groups from FirstChannelGroup, NumberChannelsGroup and OrderGroup
+
+  FirstChannelGroup.erase(FirstChannelGroup.begin()+FirstGroupIndex, FirstChannelGroup.begin()+LastGroupIndex);
+  NumberChannelsGroup.erase(NumberChannelsGroup.begin()+FirstGroupIndex, NumberChannelsGroup.begin()+LastGroupIndex);
+  OrderGroup.erase(OrderGroup.begin()+FirstGroupIndex, OrderGroup.begin()+LastGroupIndex);
+
+  // erase old elements from Matrix
+
+  Matrix.erase(Matrix.begin()+FirstMatrixIndex, Matrix.begin()+LastMatrixIndex);
+
+  // insert the new groups into FirstChannelGroup, NumberChannelsGroup and OrderGroup
+
+  vector<Integer>::iterator it = FirstChannelGroup.begin() + FirstGroupIndex;
+  FirstChannelGroup.insert(it, FChan.begin(), FChan.end());
+  it = NumberChannelsGroup.begin() + FirstGroupIndex;
+  NumberChannelsGroup.insert(it, NChan.begin(), NChan.end());
+  it = OrderGroup.begin()+FirstGroupIndex;
+  OrderGroup.insert(it, GOrder.begin(), GOrder.end());
+
+  // insert the new matrix elements
+
+  vector<Real>::iterator rit = Matrix.begin()+FirstMatrixIndex;
+  Matrix.insert(rit, MatrixValues.begin(), MatrixValues.end());
+
+  // reset the number of groups for this row
+
+  NumberGroups[RowNumber] = NGroups;
+
+  // update the FirstGroup and FirstElement arrays
+
+  this->update();
+
+  return;
+
+}
+
+// multiply a response by a vector and output a vector of pha values. The input
+// vector is assumed to be on the energy binning
+
+vector<Real> rmf::multiplyByModel(const vector<Real>& model)
+{
+  vector<Real> outPhaValues(0.0,this->NumberChannels());
+
+  // loop over energies
+  size_t nE = (size_t)(this->NumberEnergyBins());
+  for (size_t ie=0; ie<nE; ie++) {
+
+    // loop over response groups for this energy
+    for (size_t ig=(size_t)FirstGroup[ie]; 
+	 ig<(size_t)(FirstGroup[ie]+NumberGroups[ie]-1); ig++) {
+
+      // loop over the channels in this group
+      size_t ir = FirstElement[ig];
+      for (size_t ich=(size_t)FirstChannelGroup[ig]; 
+	   ich<(size_t)(FirstChannelGroup[ig]+NumberChannelsGroup[ig]-1); ich++) {
+	outPhaValues[ich] += model[ie] * Matrix[ir];
+	ir++;
+      }
+    }
+  }
+
+  return outPhaValues;
+}
+
+// return a vector containing the FWHM in channels for each energy. This does
+// assume that the response has a well-defined main peak and operates by the
+// simple method of stepping out from the peak in both directions till the 
+// response falls below half the maximum. A better solution would obviously be
+// to fit a gaussian
+
+vector<Real> rmf::estimatedFWHM()
+{
+  size_t nE = (size_t)(this->NumberEnergyBins());
+
+  vector<Real> fwhm(nE);
+
+  for (size_t ie=0; ie<nE; ie++) {
+
+    vector<Real> values = this->RowValues(ie);
+
+    // find peak value
+    Real maxValue = values[0];
+    size_t imax = 0;
+    for (size_t ich=1; ich<values.size(); ich++) {
+      if ( values[ich] > maxValue ) {
+	maxValue = values[ich];
+	imax = ich;
+      }
+    }
+
+    // now find the fwhm by moving outward from the maximum +ve and -ve directions
+    // till we find the half maximum points or run into the edge.
+    Real halfMax(maxValue/2.0);
+    size_t ihigh = imax++;
+    while ( ihigh < values.size()-1 && values[ihigh] > halfMax ) ihigh++;
+    size_t ilow = imax--;
+    while ( ilow > 0 && values[ilow] > halfMax ) ilow--;
+
+    bool goodLow(true), goodHigh(true);
+    if ( values[values.size()-1] > halfMax ) goodHigh = false;
+    if ( values[0] > halfMax ) goodLow = false;
+
+    fwhm[ie] = 0.0;
+    if ( goodHigh) {
+      fwhm[ie] += ihigh - imax;
+    }
+    if ( goodLow ) {
+      fwhm[ie] += imax - ilow;
+    }
+    if ( (goodHigh && !goodLow) || (!goodHigh && goodLow) ) fwhm[ie] *= 2;
+    if ( !goodHigh && !goodLow ) fwhm[ie] = -1.0;
+
+  }
+
+  return fwhm;
+}
+
+// return a vector containing the FWHM in channels for each channel. This does
+// assume that the response has a well-defined main peak
+
+vector<Real> rmf::estimatedFWHMperChannel()
+{
+  size_t nE = (size_t)(this->NumberEnergyBins());
+  size_t nChan = (size_t)(this->NumberChannels());
+
+  vector<Real> Efwhm(nE);
+  vector<Real> fwhm(nChan);
+
+  // first estimate the FWHM for each energy bin
+  
+  Efwhm = this->estimatedFWHM();
+
+  // now interpolate using the nominal channel energies to give the FWHM for
+  // each channel. assuming that FWHM does not change significantly over the
+  // channel so just find the FWHM at the center energy of the channel
+
+  for (size_t i=0; i<nChan; i++) {
+
+    Real channelE = 0.5*(ChannelLowEnergy[i] + ChannelHighEnergy[i]);
+    size_t index = binarySearch(channelE, LowEnergy, HighEnergy);
+
+    fwhm[i] = Efwhm[index];
+
+  }
+
+  return fwhm;
+}
+
+
 // utility routines that are not methods for the rmf object
 
 rmf operator* (const rmf& r, const arf& a){
@@ -2029,6 +2649,16 @@ rmf operator* (const arf& a, const rmf& r){
   return rr *= a;
 }
 
+rmf operator* (const rmf& r, const Real& f){
+  rmf rr(r);
+  return rr *= f;
+}
+
+rmf operator* (const Real& f, const rmf& r){
+  rmf rr(r);
+  return rr *= f;
+}
+
 rmf operator+ (const rmf& a, const rmf& b){
   rmf r(a);
   return r += b;
@@ -2038,33 +2668,125 @@ rmf operator+ (const rmf& a, const rmf& b){
 // the gaussian is assumed to be in the units of energy,
 // ChannelLowEnergy and ChannelHighEnergy
 
-void calcGaussResp(const Real sigma, const Real energyLow, const Real energyHigh, 
-                   const Real threshold, const vector<Real>& ChannelLowEnergy, 
-		   const vector<Real>& ChannelHighEnergy, vector<Real>& ResponseVector)
+void calcGaussResp(const Real sigma, const Real energy, const Real threshold, 
+		   const vector<Real>& ChannelLowEnergy, 
+		   const vector<Real>& ChannelHighEnergy, 
+		   vector<Real>& ResponseVector)
 {
 
-  Real energy = (energyLow + energyHigh) / 2.0;
   Real winv = 1.0/sigma/sqrt(2.0);
   size_t N = ChannelLowEnergy.size();
   ResponseVector.resize(N);
+  for (size_t i=0; i<N; i++) ResponseVector[i] = 0.0;
 
-  // store the part of the gaussian below the response energy range in alow
+  // find the channel containing the energy
 
-  Real alow = 0.5 * erf(winv*(ChannelLowEnergy[0]-energy));
-  Real ahi(0.0);
+  size_t icen = binarySearch(energy, ChannelLowEnergy, ChannelHighEnergy);
 
-  // loop round channels
-  // This can be sped up a lot by starting with the centroid bin and
-  // working outwards. Simple method: loop over all bins.
+  // first do the case of zero line width
 
-  for (size_t i=0; i<N; i++) {
+  if ( sigma <= 0.0 ) {
+    ResponseVector[icen] = 1.0;
+    return;
+  }
 
-    ahi = 0.5 * erf(winv*(ChannelHighEnergy[i]-energy));
-    ResponseVector[i] = ahi - alow;
+  // if the line center is below the first bin then don't calculate the lower
+  // part of the line. If the line center is above the last bin then just calculate
+  // the part of the line within the energy range
+
+  if ( energy < ChannelLowEnergy[0] ) {
+    icen = 0;
+  } else if ( energy > ChannelHighEnergy[N-1] ) {
+    icen = N-1;
+  }
+
+  // Do the low energy part of the line
+
+  int ielow(icen);
+  Real alow(0.0);
+  Real lineSum(0.0);
+  Real ahi;
+
+  while ( ielow >= 0 ) {
+    ahi = erf(winv*(fabs(ChannelLowEnergy[ielow]-energy)));
+    Real fract = (ahi-alow)/2;
+    if ( fract >= threshold || ielow == icen ) {
+      ResponseVector[ielow] += fract;
+      lineSum += fract;
+    } else {
+      ielow = 0;
+    }
     alow = ahi;
+    ielow -= 1;
+  }
 
+  // If the line center is above the last bin then don't calculate the upper
+  // part of the line. If line center is below the first bin then just calculate
+  // the part of the line within energy range
+
+  if ( energy < ChannelLowEnergy[0] ) {
+    icen = 1;
+  } else if ( energy > ChannelHighEnergy[N-1] ) {
+    icen = N + 1;
+  }
+
+  // Do the high energy part of the line
+
+  ielow = icen;
+  alow = 0.0;
+  while ( ielow <= N-1 ) {
+    ahi = erf(winv*(fabs(ChannelHighEnergy[ielow]-energy)));
+    Real fract = (ahi-alow)/2;
+    if ( fract >= threshold || ielow == icen ) {
+      ResponseVector[ielow] += fract;
+      lineSum += fract;
+    } else {
+      ielow = N;
+    }
+    alow = ahi;
+    ielow += 1;
   }
 
   return;
 }
 
+size_t binarySearch(const Real energy, const vector<Real>& lowEnergy,
+		    const vector<Real>& highEnergy)
+{
+  // Function to do a binary search for the i which satisfies
+  // lowEnergy[i] < energy <= highEnergy[i]
+  
+  size_t nE = lowEnergy.size();
+  
+  bool increase(false);
+  if ( lowEnergy[1] > lowEnergy[0] ) increase = true;
+  
+  if ( increase ) {
+    if ( energy < lowEnergy[0] ) return(0);
+    if ( energy > highEnergy[nE-1] ) return(nE-1);
+  } else {
+    if ( energy > lowEnergy[0] ) return(0);
+    if ( energy < highEnergy[nE-1] ) return(nE-1);
+  }
+  
+  size_t low = 0;
+  size_t high = nE-1;
+  size_t bisearch;
+  
+  while ( high-low > 1 ) {
+    bisearch = (low+high)/2;
+    if ( (increase && energy > lowEnergy[bisearch]) ||
+	 (!increase && energy < lowEnergy[bisearch]) ) {
+      low = bisearch;
+    } else {
+      high = bisearch;
+    }
+  }
+
+  if ( lowEnergy[low] < energy && energy <= highEnergy[low] ) {
+    return(low);
+  } else {
+    return(high);
+  }
+
+}

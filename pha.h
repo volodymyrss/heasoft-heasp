@@ -21,11 +21,13 @@ class pha{
 
   vector<Real> Pha;                     // PHA data
   vector<Real> StatError;               // Statistical error 
-  vector<Real> SysError;                // Statistical error 
+  vector<Real> SysError;                // Systematic error 
 
   vector<Integer> Channel;              // Channel number
-  vector<Integer> Quality;              // Data quality 
-  vector<Integer> Group;                // Data grouping 
+  vector<Integer> Quality;              // Data quality (0=good, 1=bad, 2=dubious, 
+                                        //               5=set bad by user)
+  vector<Integer> Group;                // Data grouping ( 1=start of bin, 
+                                        //                -1=continuation of bin)
 
   vector<Real> AreaScaling;             // Area scaling factor 
   vector<Real> BackScaling;             // Background scaling factor 
@@ -110,18 +112,52 @@ class pha{
 
   Integer checkCompatibility(const pha&);
 
+  // Select a subset of the channels
+
+  Integer selectChannels(vector<Integer>& Start, vector<Integer>& End);
+
   // Set grouping array from grouping object
 
   Integer setGrouping(grouping&);
+
+  // Get grouping object from the grouping array
+
+  grouping getGrouping();
+
+  // Get grouping (optionally between channels StartChannel and EndChannel) 
+  // using a minimum number of counts per bin
+
+  grouping getMinCountsGrouping(const Integer MinCounts, const Integer StartChannel,
+			       const Integer EndChannel);
+  grouping getMinCountsGrouping(const Integer MinCounts);
+
+  // Get grouping (optionally between channels StartChannel and EndChannel) 
+  // using a minimum S/N. Optionally includes a background file as well.
+
+  grouping getMinSNGrouping(const Real SignalToNoise, const Integer StartChannel,
+			    const Integer EndChannel, const pha& Background);
+  grouping getMinSNGrouping(const Real SignalToNoise, const pha& Background);
+  grouping getMinSNGrouping(const Real SignalToNoise, const Integer StartChannel,
+			    const Integer EndChannel);
+  grouping getMinSNGrouping(const Real SignalToNoise);
 
   // Rebin channels
 
   Integer rebinChannels(grouping&);
   Integer rebinChannels(grouping&, string);
 
-  // Shift channels
+  // Shift channels. Option to use channel energy bounds in which case Shift is
+  // assumed to be in energies, otherwise in channel number.
 
   Integer shiftChannels(Integer Start, Integer End, Real Shift);
+  Integer shiftChannels(Integer Start, Integer End, Real Shift, Real Factor);
+  Integer shiftChannels(vector<Integer>& Start, vector<Integer>& End, vector<Real>& Shift,
+			vector<Real>& Factor);
+  Integer shiftChannels(vector<Real>& ChannelLowEnergy, vector<Real>& ChannelHighEnergy, 
+			Integer Start, Integer End, Real Shift, Real Factor);
+  Integer shiftChannels(vector<Real>& ChannelLowEnergy, vector<Real>& ChannelHighEnergy, 
+			vector<Integer>& Start, vector<Integer>& End, vector<Real>& Shift,
+			vector<Real>& Factor);
 
   // Convert flux units from whatever they are currently to ph/cm^2/s. 
   // This requires as input the channel energy arrays from the rmf object and
@@ -152,6 +188,9 @@ bool IsPHAcounts(string filename, Integer PHAnumber, Integer& Status);
 Integer NumberofSpectra(string filename, Integer PHAnumber); 
 Integer NumberofSpectra(string filename, Integer PHAnumber, Integer& Status); 
 
+// return the numbers of any spectrum extensions
 
+vector<Integer> SpectrumExtensions(string filename);
+vector<Integer> SpectrumExtensions(string filename, Integer& Status);
 
 

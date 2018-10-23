@@ -89,3 +89,11 @@ template <class T> bool SPneedCol(const T&);
 // T is assumed to be a valarray or a vector of a scalar of some type.
 
 template <class T> bool SPneedCol(const T&, bool& isvector);
+
+// Real all keywords from the primary or an extension into a vector of strings
+
+vector<string> SPreadAllPrimaryKeywords(const string& filename);
+vector<string> SPreadAllKeywords(const string& filename, const string& hduName, 
+				 const int& hduNumber);
+
+

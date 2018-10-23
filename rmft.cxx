@@ -25,6 +25,32 @@
 // default constructor
 
 rmft::rmft()
+  : FirstChannel(0),
+    NumberGroups(),
+    FirstGroup(),
+    FirstEnergyGroup(),
+    NumberEnergiesGroup(),
+    FirstElement(),
+    OrderGroup(),
+    LowEnergy(),
+    HighEnergy(),
+    Matrix(),
+    ChannelLowEnergy(),
+    ChannelHighEnergy(),
+    AreaScaling(1.0),
+    ResponseThreshold(0.0),
+    EnergyUnits("keV"),
+    RMFUnits(" "),
+    ChannelType("PI"),
+    RMFVersion("1.1.0"),
+    EBDVersion("1.1.0"),
+    Telescope(" "),
+    Instrument(" "),
+    Detector(" "),
+    Filter(" "),
+    RMFType(" "),
+    RMFExtensionName("MATRIX"),
+    EBDExtensionName("EBOUNDS")
 {
 }
 
@@ -33,6 +59,18 @@ rmft::rmft()
 
 rmft::~rmft()
 {
+  // clear vectors with guaranteed reallocation
+  vector<Integer>().swap(NumberGroups);
+  vector<Integer>().swap(FirstGroup);
+  vector<Integer>().swap(FirstEnergyGroup);
+  vector<Integer>().swap(NumberEnergiesGroup);
+  vector<Integer>().swap(FirstElement);
+  vector<Integer>().swap(OrderGroup);
+  vector<Real>().swap(LowEnergy);
+  vector<Real>().swap(HighEnergy);
+  vector<Real>().swap(Matrix);
+  vector<Real>().swap(ChannelLowEnergy);
+  vector<Real>().swap(ChannelHighEnergy);
 }
 
 // load object from a ResponseMatrix

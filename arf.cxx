@@ -18,6 +18,17 @@
 // default constructor
 
 arf::arf()
+  : LowEnergy(),
+    HighEnergy(),
+    EffArea(),
+    EnergyUnits("keV"),
+    arfUnits("cm^2"),
+    Version("1.1.0"),
+    Telescope(" "),
+    Instrument(" "),
+    Detector(" "),
+    Filter(" "),
+    ExtensionName("SPECRESP")
 {
 }
 
@@ -26,6 +37,10 @@ arf::arf()
 
 arf::~arf()
 {
+  // clear vectors with guaranteed reallocation
+  vector<Real>().swap(LowEnergy);
+  vector<Real>().swap(HighEnergy);
+  vector<Real>().swap(EffArea);
 }
 
 // reading from ARF file. 
@@ -74,6 +89,7 @@ Integer arf::read(string filename, Integer ARFnumber, Integer RowNumber)
   Version = SPreadKey(arf, "HDUVERS", RowNumber, DefString);
   if ( Version == "UNKNOWN" ) {
     Version = SPreadKey(arf, "HDUVERS1", RowNumber, DefString);
+    if ( Version == "UNKNOWN" ) Version = "1.1.0";
   }
 
   Telescope = SPreadKey(arf, "TELESCOP", RowNumber, DefString);
@@ -220,6 +236,41 @@ string arf::check()
   return outstr.str();
 }
 
+// Rebin
+
+Integer arf::rebin(grouping& GroupInfo)
+{
+
+  int NBinsIn = NumberEnergyBins();
+
+  // check for consistency between grouping and number of energy bins
+
+  if ( GroupInfo.size() != NBinsIn ) {
+    stringstream msg;
+    msg << "Number of energy bins (" << NBinsIn << ") differs from size of grouping array (" << GroupInfo.size() << ").";
+    SPreportError(InconsistentGrouping, msg.str());
+    return(InconsistentGrouping);
+  }
+
+  // rebin LowEnergy, HighEnergy, and EffArea vectors
+  vector<Real> temp;
+
+  GroupBin(LowEnergy, FirstEltMode, GroupInfo, temp);
+  LowEnergy.resize(temp.size());
+  LowEnergy = temp;
+
+  GroupBin(HighEnergy, LastEltMode, GroupInfo, temp);
+  HighEnergy.resize(temp.size());
+  HighEnergy = temp;
+
+  GroupBin(EffArea, SumMode, GroupInfo, temp);
+  EffArea.resize(temp.size());
+  EffArea = temp;
+
+  return(OK);
+
+}
+
 
 // Write arf as type I file
 
@@ -253,7 +304,7 @@ Integer arf::write(string filename)
   tform.push_back("E");
   tunit.push_back(" ");
 
-  ttype.push_back("EFFAREA");
+  ttype.push_back("SPECRESP");
   tform.push_back("E");
   tunit.push_back(" ");
 
@@ -288,13 +339,13 @@ Integer arf::write(string filename)
 
   SPwriteCol(arf, "ENERG_LO", LowEnergy);
   SPwriteCol(arf, "ENERG_HI", HighEnergy);
-  SPwriteCol(arf, "EFFAREA", EffArea);
+  SPwriteCol(arf, "SPECRESP", EffArea);
 
   // Write the units
 
   SPwriteColUnits(arf, "ENERG_LO", EnergyUnits);
   SPwriteColUnits(arf, "ENERG_HI", EnergyUnits);
-  SPwriteColUnits(arf, "EFFAREA", arfUnits);
+  SPwriteColUnits(arf, "SPECRESP", arfUnits);
 
   return(OK);
 }
@@ -325,6 +376,16 @@ Integer arf::write(string filename, string copyfilename, Integer HDUnumber)
   return(Status);
 }
 
+// Multiply by a constant
+
+arf& arf::operator*=(const Real& factor)
+{
+  // Multiply effective areas
+
+  for (size_t i=0; i<EffArea.size(); i++) EffArea[i] *= factor;
+
+  return *this;
+}
 
 // Sum to another arf
 
@@ -395,37 +456,18 @@ arf operator+ (const arf& a, const arf& b)
   return c += b;
 }
 
-// return the number of spectra in a type II PHA extension
-
-Integer NumberofARFs(string filename, Integer HDUnumber, Integer& Status)
+arf operator* (const arf& a, const Real& f)
 {
-
-  if ( Status != OK ) return 0;
-
-  const string hduName("SPECRESP");
-
-  // Read in the SPECRESP extension number HDUnumber
-  // and set up an object called arf with the contents
-
-  const vector<string> hduKeys;
-  const vector<string> primaryKey;
-
-  auto_ptr<FITS> pInfile(0);
-
-  try {
-    pInfile.reset(new FITS(filename,Read,hduName,false,hduKeys,primaryKey,(int)HDUnumber));
-  } catch(...) {
-    string msg = "Failed to read "+hduName+" in "+filename;
-    SPreportError(NoSuchFile, msg);
-    Status = NoSuchFile;
-    return(0);
-  }
-
-  ExtHDU& arf = pInfile->extension(hduName);
-
-  return (Integer)arf.rows();
-
+  arf c(a);
+  return c *= f;
 }
+
+arf operator* (const Real& f, const arf& a)
+{
+  arf c(a);
+  return c *= f;
+}
+
 
 
 

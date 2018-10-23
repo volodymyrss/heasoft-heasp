@@ -31,7 +31,7 @@ class arfII{
 
   Integer read(string filename);
   Integer read(string filename, Integer ARFnumber);
-  Integer read(string filename, Integer ARFnumber, vector<Integer> RowNumber);
+  Integer read(string filename, Integer ARFnumber, vector<Integer>& RowNumber);
 
   // Deep copy
 
@@ -70,3 +70,7 @@ class arfII{
 
 };
 
+// return the number of ARFs in a type II ARF extension
+
+Integer NumberofARFs(string filename, Integer HDUnumber);
+Integer NumberofARFs(string filename, Integer HDUnumber, Integer& Status);

@@ -6,26 +6,16 @@ HD_LIBRARY_ROOT		= ${HEASP}
 
 HD_LIBRARY_SRC_cxx	= pha.cxx phaII.cxx SPio.cxx SPutils.cxx grouping.cxx arf.cxx arfII.cxx rmf.cxx rmft.cxx table.cxx Cwrappers.cxx
 
-HD_SHLIB_LIBS		= ${HD_LFLAGS} -l${HEAUTILS} -l${CCFITS} -l${CFITSIO} -l${HEAIO} \
-			  ${SYSLIBS}
 
-HD_CFLAGS		= ${HD_STD_CFLAGS}
+HD_CXXFLAGS		= ${HD_STD_CXXFLAGS} -I${HEADAS}/include
 
-HD_CXXFLAGS             = ${HD_STD_CXXFLAGS} -I${HEADAS}/include $(shell python-config --includes)
-
-HD_INSTALL_HEADERS	= heasp.h Cheasp.h pha.h phaII.h SPio.h SPutils.h grouping.h arf.h arfII.h rmf.h rmft.h table.h
+HD_SHLIB_LIBS		= ${HD_LFLAGS} -l${CCFITS} -l${CFITSIO} -L${HEADAS}/lib
 
 HD_INSTALL_LIBRARIES	= ${HD_LIBRARY_ROOT}
 
-HD_INSTALL_HELP		= 
+HD_INSTALL_HEADERS	= heasp.h Cheasp.h pha.h phaII.h SPio.h SPutils.h grouping.h arf.h arfII.h rmf.h rmft.h table.h
 
-HD_CXXLIBS		= ${HD_LFLAGS} -${HD_STD_CXXLIBS}
-
-HD_TEST_SUBDIRS		= 
-
-HD_TEST_CTASK		= 
-
-HD_TEST_CTASK_SRC_c	= 
+HD_INSTALL_HELP		=
 
 HD_SUBDIRS		= python
 

@@ -14,6 +14,7 @@
 // default constructor
 
 arfII::arfII()
+  : arfs()
 {
 }
 
@@ -22,6 +23,8 @@ arfII::arfII()
 
 arfII::~arfII()
 {
+  // clear vector with guaranteed reallocation
+  vector<arf>().swap(arfs);
 }
 
 // read all ARFs from the file
@@ -54,7 +57,7 @@ Integer arfII::read(string filename, Integer ARFnumber)
 
 // reading from ARF file.Somewhat inefficient but just reads each ARF individually
 
-Integer arfII::read(string filename, Integer ARFnumber, vector<Integer> RowNumber)
+Integer arfII::read(string filename, Integer ARFnumber, vector<Integer>& RowNumber)
 {
   Integer Status(OK);
 
@@ -336,5 +339,45 @@ Integer arfII::write(string filename, string copyfilename, Integer HDUnumber)
   Status = SPcopyHDUs(copyfilename, filename);
 
   return(Status);
+}
+
+// return the number of ARFs in a type II ARF extension
+
+Integer NumberofARFs(string filename, Integer HDUnumber)
+{
+  Integer Status(OK);
+  return(NumberofARFs(filename, HDUnumber, Status));
+}
+
+// return the number of ARFs in a type II ARF extension
+
+Integer NumberofARFs(string filename, Integer HDUnumber, Integer& Status)
+{
+
+  if ( Status != OK ) return 0;
+
+  const string hduName("SPECRESP");
+
+  // Read in the SPECRESP extension number HDUnumber
+  // and set up an object called arf with the contents
+
+  const vector<string> hduKeys;
+  const vector<string> primaryKey;
+
+  auto_ptr<FITS> pInfile(0);
+
+  try {
+    pInfile.reset(new FITS(filename,Read,hduName,false,hduKeys,primaryKey,(int)HDUnumber));
+  } catch(...) {
+    string msg = "Failed to read "+hduName+" in "+filename;
+    SPreportError(NoSuchFile, msg);
+    Status = NoSuchFile;
+    return(0);
+  }
+
+  ExtHDU& arf = pInfile->extension(hduName);
+
+  return (Integer)arf.rows();
+
 }
 

@@ -18,6 +18,34 @@
 // default constructor
 
 pha::pha()
+  : FirstChannel(0),
+    Pha(),
+    StatError(),
+    SysError(),
+    Channel(),
+    Quality(),
+    Group(),
+    AreaScaling(),
+    BackScaling(),
+    Exposure(0.0),
+    CorrectionScaling(0.0),
+    DetChans(0),
+    Poisserr(false),
+    Datatype("COUNT"),
+    PHAVersion("1.2.1"),
+    Spectrumtype("TOTAL"),
+    ResponseFile("NONE"),
+    AncillaryFile("NONE"),
+    BackgroundFile("NONE"),
+    CorrectionFile("NONE"),
+    FluxUnits(" "),
+    ChannelType("PI"),
+    Telescope(" "),
+    Instrument(" "),
+    Detector(" "),
+    Filter(" "),
+    Datamode(" "),
+    XSPECFilter()
 {
 }
 
@@ -26,6 +54,16 @@ pha::pha()
 
 pha::~pha()
 {
+  // clear vectors with guaranteed reallocation
+  vector<Real>().swap(Pha);
+  vector<Real>().swap(StatError);
+  vector<Real>().swap(SysError);
+  vector<Integer>().swap(Channel);
+  vector<Integer>().swap(Quality);
+  vector<Integer>().swap(Group);
+  vector<Real>().swap(AreaScaling);
+  vector<Real>().swap(BackScaling);
+  vector<string>().swap(XSPECFilter);
 }
 
 
@@ -69,16 +107,18 @@ Integer pha::read(string filename, Integer PHAnumber, Integer SpectrumNumber)
     return(NoSuchFile);
   }
 
-  ExtHDU& spectrum = pInfile->extension(hduName);
+  ExtHDU& spectrum = pInfile->extension(hduName, (int)PHAnumber);
   
   // read the standard keywords and store in the object
 
   DefString = "UNKNOWN";
+
   ChannelType = SPreadKey(spectrum, "CHANTYPE", SpectrumNumber, DefString);
 
   PHAVersion = SPreadKey(spectrum, "HDUVERS", SpectrumNumber, DefString);
   if ( PHAVersion == "UNKNOWN" ) {
     PHAVersion = SPreadKey(spectrum, "HDUVERS1", SpectrumNumber, DefString);
+    if ( PHAVersion == "UNKNOWN" ) PHAVersion = "1.2.1";
   }
 
   Telescope = SPreadKey(spectrum, "TELESCOP", SpectrumNumber, DefString);
@@ -120,6 +160,14 @@ Integer pha::read(string filename, Integer PHAnumber, Integer SpectrumNumber)
     string KeyValue;
     DefString = "NONE";
     KeyValue = SPreadKey(spectrum, KeyName, SpectrumNumber, DefString);
+    if (KeyValue == "NONE") {
+      Real KeyReal = SPreadKey(spectrum, KeyName, SpectrumNumber, (Real)-999.0);
+      if (KeyReal != -999.0) {
+	ostringstream RStream;
+	RStream << KeyReal;
+	KeyValue = RStream.str();
+      }
+    }
     if (KeyValue != "NONE") {
       XSPECFilter.push_back(KeyValue);
     } else {
@@ -205,26 +253,50 @@ Integer pha::read(string filename, Integer PHAnumber, Integer SpectrumNumber)
   FITS::clearErrors();
   FITS::setVerboseMode(verbosity);
 
-  if ( SysError.size() == 0 ) {
-    SysError.resize(1);
-    SysError[0] = 0.0;
+  if ( SysError.size() == 1 || SysError.size() == 0 ) {
+    SysError.resize(Pha.size());
+    for (size_t i=0; i<Pha.size(); i++) SysError[i] = 0.0;
   }
 
   // Read the QUALITY
 
   SPreadCol(spectrum,"QUALITY",SpectrumNumber,Quality);
+  if ( Quality.size() == 1 || Quality.size() == 0 ) {
+    Quality.resize(Pha.size());
+    for (size_t i=0; i<Pha.size(); i++) Quality[i] = 0;
+  }
 
   // Read the GROUPING
   
   SPreadCol(spectrum,"GROUPING",SpectrumNumber,Group);
+  if ( Group.size() == 1 || Group.size() == 0) {
+    Group.resize(Pha.size());
+    for (size_t i=0; i<Pha.size(); i++) Group[i] = 1;
+  }
 
   // Read the AREASCAL
 
   SPreadCol(spectrum,"AREASCAL",SpectrumNumber,AreaScaling);
+  if ( AreaScaling.size() == 1 ) {
+    AreaScaling.resize(Pha.size());
+    for (size_t i=1; i<Pha.size(); i++) AreaScaling[i] = AreaScaling[0];
+  }
+  if ( AreaScaling.size() == 0 ) {
+    AreaScaling.resize(Pha.size());
+    for (size_t i=0; i<Pha.size(); i++) AreaScaling[i] = 1.0;
+  }
 
   // Read the BACKSCAL
 
   SPreadCol(spectrum,"BACKSCAL",SpectrumNumber,BackScaling);
+  if ( BackScaling.size() == 1 ) {
+    BackScaling.resize(Pha.size());
+    for (size_t i=1; i<Pha.size(); i++) BackScaling[i] = BackScaling[0];
+  }
+  if ( BackScaling.size() == 0 ) {
+    BackScaling.resize(Pha.size());
+    for (size_t i=0; i<Pha.size(); i++) BackScaling[i] = 1.0;
+  }
 
   return(OK);
 
@@ -298,7 +370,7 @@ string pha::disp()
 {
   ostringstream outstr;
 
-  outstr << "Spectrum information : " << endl;
+  outstr << "Spectrum information : \n";
   outstr << "   Number of channels   = " << NumberChannels()<< endl;
   outstr << "   Detchans             = " << DetChans << endl;
   outstr << "   Exposure             = " << Exposure<< endl;
@@ -322,17 +394,18 @@ string pha::disp()
   outstr << "   Detector             = " << Detector<< endl;  
   outstr << "   Filter               = " << Filter<< endl;  
   outstr << "   Datamode             = " << Datamode<< endl;
-  if ( AreaScaling.size() == 1 ) {
-    outstr << "   AreaScaling          = " << AreaScaling[0]<< endl;
+  outstr << endl;
+  if ( AreaScaling.size() > 0 ) {
+    outstr << "   AreaScaling[0]       = " << AreaScaling[0]<< endl;
   }
-  if ( BackScaling.size() == 1 ) {
-    outstr << "   BackScaling          = " << BackScaling[0]<< endl;
+  if ( BackScaling.size() > 0 ) {
+    outstr << "   BackScaling[0]       = " << BackScaling[0]<< endl;
   }
-  if ( Quality.size() == 1 ) {
-    outstr << "   Quality              = " << Quality[0]<< endl;
+  if ( Quality.size() > 0 ) {
+    outstr << "   Quality[0]           = " << Quality[0]<< endl;
   }
-  if ( Group.size() == 1 ) {
-    outstr << "   Grouping             = " << Group[0]<< endl;
+  if ( Group.size() > 0 ) {
+    outstr << "   Group[0]          = " << Group[0]<< endl;
   }
   outstr << endl;
 
@@ -440,14 +513,14 @@ string pha::check()
 
   // Check for consistency between the size of the Pha and StatError arrays
 
-  if ( Pha.size() != StatError.size() && StatError.size() != 0 ) {
+  if ( Pha.size() != StatError.size() && StatError.size() != 0 && StatError.size() != 1 ) {
     outstr << "Size of Pha array (" << Pha.size() << ") differs from size of StatError array ("
 	 << StatError.size() << ")" << endl;
   }
 
   // Check for consistency between the size of the Pha and SysError arrays
 
-  if ( Pha.size() != SysError.size() && SysError.size() != 0 ) {
+  if ( Pha.size() != SysError.size() && SysError.size() != 0 && SysError.size() != 1 ) {
     outstr << "Size of Pha array (" << Pha.size() << ") differs from size of SysError array ("
 	 << SysError.size() << ")" << endl;
   }
@@ -461,28 +534,28 @@ string pha::check()
 
   // Check for consistency between the size of the Pha and Quality arrays
 
-  if ( Pha.size() != Quality.size() && Quality.size() != 0 && Quality.size() != 1 ) {
+  if ( Pha.size() != Quality.size() ) {
     outstr << "Size of Pha array (" << Quality.size() << ") differs from size of Quality array ("
 	 << Quality.size() << ")" << endl;
   }
 
   // Check for consistency between the size of the Pha and Group arrays
 
-  if ( Pha.size() != Group.size() && Group.size() != 0 && Group.size() != 1 ) {
+  if ( Pha.size() != Group.size() ) {
     outstr << "Size of Pha array (" << Group.size() << ") differs from size of Group array ("
 	 << Group.size() << ")" << endl;
   }
 
   // Check for consistency between the size of the Pha and AreaScaling arrays
 
-  if ( Pha.size() != AreaScaling.size() && AreaScaling.size() != 0 && AreaScaling.size() != 1 ) {
+  if ( Pha.size() != AreaScaling.size() ) {
     outstr << "Size of Pha array (" << AreaScaling.size() << ") differs from size of AreaScaling array ("
 	 << AreaScaling.size() << ")" << endl;
   }
 
   // Check for consistency between the size of the Pha and BackScaling arrays
 
-  if ( Pha.size() != BackScaling.size() && BackScaling.size() != 0 && BackScaling.size() != 1 ) {
+  if ( Pha.size() != BackScaling.size() ) {
     outstr << "Size of Pha array (" << BackScaling.size() << ") differs from size of BackScaling array ("
 	 << BackScaling.size() << ")" << endl;
   }
@@ -538,11 +611,9 @@ Integer pha::write(string filename)
   // set up the column descriptors for those attributes which need to be 
   // written as columns
 
-  if ( SPneedCol(Channel) ) {
-    ttype.push_back("CHANNEL");
-    tform.push_back("J");
-    tunit.push_back(" ");
-  }
+  ttype.push_back("CHANNEL");
+  tform.push_back("J");
+  tunit.push_back(" ");
 
   if ( Datatype == "RATE" ) {
     ttype.push_back("RATE");
@@ -658,14 +729,12 @@ Integer pha::write(string filename)
   // Write the arrays - if an array is of size 1 or all the same value 
   // it will be written as a keyword
 
-  if ( Channel.size() > 1 ) {
-    SPwriteCol(spectrum, "CHANNEL", Channel);
-  }
+  SPwriteCol(spectrum, "CHANNEL", Channel, true);
 
   if ( Datatype == "RATE") {
-    SPwriteCol(spectrum, "RATE", Pha);
+    SPwriteCol(spectrum, "RATE", Pha, true);
   } else {
-    SPwriteCol(spectrum, "COUNTS", Pha);
+    SPwriteCol(spectrum, "COUNTS", Pha, true);
   }
 
   if (!Poisserr) SPwriteCol(spectrum, "STAT_ERR", StatError, true);
@@ -867,6 +936,64 @@ Integer pha::checkCompatibility(const pha& a)
   return OK;
 }
 
+// Select a subset of the channels
+
+Integer pha::selectChannels(vector<Integer>& Start, vector<Integer>& End)
+{
+  vector<Real> tPha, tStatError, tSysError, tAreaScaling, tBackScaling;
+  vector<Integer> tChannel, tQuality, tGroup;
+
+  size_t iset = 0;
+  bool first = true;
+  size_t ich = 0;
+  while ( ich<Channel.size() && iset<Start.size() ) {
+    if ( Channel[ich] >= Start[iset] && Channel[ich] <= End[iset] ) {
+      tPha.push_back(Pha[ich]);
+      tStatError.push_back(StatError[ich]);
+      tSysError.push_back(SysError[ich]);
+      tAreaScaling.push_back(AreaScaling[ich]);
+      tBackScaling.push_back(BackScaling[ich]);
+      tChannel.push_back(Channel[ich]);
+      tQuality.push_back(Quality[ich]);
+      if ( first ) {
+	tGroup.push_back(1);
+	first = false;
+      } else {
+	tGroup.push_back(Group[ich]);
+      }
+    }
+    while ( ich > (size_t)End[iset] ) {
+      iset++;
+      first = true;
+    }
+    ich++;
+  }
+
+  // Reset the arrays
+
+  size_t Nnew = tPha.size();
+  Pha.resize(Nnew);
+  StatError.resize(Nnew);
+  SysError.resize(Nnew);
+  AreaScaling.resize(Nnew);
+  BackScaling.resize(Nnew);
+  Channel.resize(Nnew);
+  Quality.resize(Nnew);
+  Group.resize(Nnew);
+  for ( size_t i=0; i<Nnew; i++) {
+    Pha[i] = tPha[i];
+    StatError[i] = tStatError[i];
+    SysError[i] = tSysError[i];
+    AreaScaling[i] = tAreaScaling[i];
+    BackScaling[i] = tBackScaling[i];
+    Channel[i] = tChannel[i];
+    Quality[i] = tQuality[i];
+    Group[i] = tGroup[i];
+  }
+
+  return OK;
+}
+
 // Set grouping array from Grouping object
 
 Integer pha::setGrouping(grouping& GroupInfo)
@@ -883,15 +1010,213 @@ Integer pha::setGrouping(grouping& GroupInfo)
 
   // loop through channels setting grouping array
 
+  for (size_t i=0; i<(size_t)NumberChannels(); i++) Group[i] = GroupInfo.flag[i];
+
+  // check for the presence of any bad channels signalled by input grouping flag
+  // being zero
+
+  bool isBad(false);
   for (size_t i=0; i<(size_t)NumberChannels(); i++) {
-    if ( GroupInfo.newBin(i) ) {
-      Group[i] = 1;
-    } else {
-      Group[i] = 0;
+    if ( GroupInfo.flag[i] == 0 ) isBad = true;
+  }
+
+  // if isBad is set then need to change the Quality array. First resize if
+  // necessary
+
+  if ( isBad ) {
+
+    // Loop over the quality array setting to 2 any channels for which
+    // Group is 0 - also reset Group to 1 (this is consistent with old grppha
+    // behaviour)
+
+    for (size_t i=0; i<(size_t)NumberChannels(); i++) {
+      if ( Group[i] == 0 ) {
+	Quality[i] = 2;
+	Group[i] = 1;
+      }
     }
+
   }
 
   return(OK);
+}
+
+// Get grouping object from the grouping array
+
+grouping pha::getGrouping()
+{
+  grouping groupInfo;
+  groupInfo.loadFromVector(Quality, Group);
+  return groupInfo;
+}
+
+// Get grouping between channels StartChannel and EndChannel using a 
+// minimum number of counts per bin
+
+grouping pha::getMinCountsGrouping(const Integer MinCounts, const Integer StartChannel,
+			     const Integer EndChannel)
+{
+
+  size_t Nchan = NumberChannels();
+  // first need to convert Pha data to counts if the type is RATE
+  vector<Integer> dataCounts(Nchan);
+  if ( Datatype == "RATE" ) {
+    for (size_t i=0; i<Nchan; i++) dataCounts[i] = (Integer)round(Pha[i] * Exposure);
+  } else {
+    for (size_t i=0; i<Nchan; i++) dataCounts[i] = (Integer)round(Pha[i]);
+  }
+
+  // convert start and end channel to zero-based
+  Integer start = StartChannel - FirstChannel;
+  Integer end = EndChannel - FirstChannel;
+  // calculate the grouping
+  grouping groupInfo;
+  groupInfo.loadMin(MinCounts, start, end, dataCounts);
+
+  // and return it
+
+  return groupInfo;
+}
+
+grouping pha::getMinCountsGrouping(const Integer MinCounts)
+{
+  Integer StartChannel = FirstChannel;
+  Integer EndChannel = FirstChannel + NumberChannels() - 1;
+  return getMinCountsGrouping(MinCounts, StartChannel, EndChannel);
+}
+
+// Get grouping (optionally between channels StartChannel and EndChannel) 
+// using a minimum S/N. Optionally includes a background file as well.
+
+grouping pha::getMinSNGrouping(const Real SignalToNoise, const Integer StartChannel,
+			       const Integer EndChannel, const pha& Background)
+{
+  size_t Nchan(NumberChannels());
+
+  // make vectors containing signal and noise
+  vector<Real> Signal(Nchan), Noise(Nchan);
+
+  for (size_t i=0; i<Nchan; i++) Signal[i] = Pha[i];
+
+  if ( Poisserr ) {
+    if ( Datatype == "RATE" ) {
+      for (size_t i=0; i<Nchan; i++) Noise[i] = sqrt(Pha[i]*Exposure)/Exposure;
+    } else {
+      for (size_t i=0; i<Nchan; i++) Noise[i] = sqrt(Pha[i]);
+    }
+  } else {
+    for (size_t i=0; i<Nchan; i++) Noise[i] = StatError[i];
+  }
+
+  if ( SysError.size() != 0 ) {
+    for (size_t i=0; i<Nchan; i++) Noise[i] = sqrt(Noise[i]*Noise[i] + SysError[i]*SysError[i]*Pha[i]*Pha[i]);
+  }
+
+  // including the background 
+
+  if ( Background.Pha.size() != 0 ) {
+
+    // useful to construct the scaling argument for the background here
+    vector<Real> Scale(Nchan);
+    for (size_t i=0; i<Nchan; i++) {
+      Scale[i] = AreaScaling[i]*BackScaling[i]
+	/(Background.AreaScaling[i]*Background.BackScaling[i]);
+      if ( Datatype == "COUNTS" ) {
+	Scale[i] *= Exposure/Background.Exposure;
+      }
+    }
+
+    // construct the background noise
+    
+    vector<Real> BackgroundNoise(Nchan);
+    if ( Background.Poisserr ) {
+      if ( Background.Datatype == "RATE" ) {
+	for (size_t i=0; i<Nchan; i++) BackgroundNoise[i] = sqrt(Background.Pha[i]*Background.Exposure)/Background.Exposure;
+      } else {
+	for (size_t i=0; i<Nchan; i++) BackgroundNoise[i] = sqrt(Background.Pha[i]);
+      }
+    } else {
+      for (size_t i=0; i<Nchan; i++) BackgroundNoise[i] = Background.StatError[i];
+    }
+
+    if ( Background.SysError.size() != 0 ) {
+      for (size_t i=0; i<Nchan; i++) BackgroundNoise[i] = sqrt(BackgroundNoise[i]*BackgroundNoise[i] + Background.SysError[i]*Background.SysError[i]*Background.Pha[i]*Background.Pha[i]);
+    }
+    
+    // substract background from the signal
+
+    for (size_t i=0; i<Nchan; i++) {
+      Signal[i] -= Background.Pha[i]*Scale[i];
+      Noise[i] = sqrt(Noise[i]*Noise[i] 
+	  + BackgroundNoise[i]*Scale[i]*BackgroundNoise[i]*Scale[i]);
+    }
+
+  }
+
+  // convert start and end channel to zero-based
+  Integer First = StartChannel - FirstChannel;
+  Integer Last = EndChannel - FirstChannel;
+
+  // set up the groupInfo.flag array to get the minimum signal to noise requested
+
+  grouping groupInfo;
+
+  bool ingroup = false;
+  size_t istart = 0;
+  Real signalSum = 0.0;
+  Real noiseSum = 0.0;
+  Real ratio;
+  groupInfo.flag.resize(Nchan);
+  for (size_t i=0; i<First; i++) groupInfo.flag[i] = 1;
+  for (size_t i=First; i<=Last; i++) {
+    signalSum += Signal[i];
+    noiseSum = sqrt(noiseSum*noiseSum + Noise[i]*Noise[i]);
+    ratio = 0.0;
+    if ( noiseSum > 0.0 ) ratio = signalSum / noiseSum;
+    if ( !ingroup ) {
+      groupInfo.flag[i] = 1;
+      istart = i;
+      signalSum = Signal[i];
+      noiseSum = Noise[i];
+      ratio = 0.0;
+      if ( noiseSum > 0.0 ) ratio = signalSum / noiseSum;
+      if ( ratio < SignalToNoise ) ingroup = true;
+    } else if ( ratio >= SignalToNoise ) {
+      groupInfo.flag[i] = -1;
+      ingroup = false;
+    } else if ( ratio < SignalToNoise ) {
+      groupInfo.flag[i] = -1;
+    }
+  }
+  if ( ratio < SignalToNoise && ingroup ) {
+    for (size_t i=istart; i<=Last; i++) groupInfo.flag[i] = 0;
+  }
+  for (size_t i=Last+1; i<Nchan; i++) groupInfo.flag[i] = 1;
+
+  
+  return groupInfo;
+}
+
+grouping pha::getMinSNGrouping(const Real SignalToNoise, const pha& Background)
+{
+  Integer StartChannel = FirstChannel;
+  Integer EndChannel = FirstChannel + NumberChannels() - 1;
+  return getMinSNGrouping(SignalToNoise, StartChannel, EndChannel, Background);
+}
+
+grouping pha::getMinSNGrouping(const Real SignalToNoise, const Integer StartChannel,
+			       const Integer EndChannel)
+{
+  pha Background;
+  return getMinSNGrouping(SignalToNoise, StartChannel, EndChannel, Background);
+}
+
+grouping pha::getMinSNGrouping(const Real SignalToNoise)
+{
+  Integer StartChannel = FirstChannel;
+  Integer EndChannel = FirstChannel + NumberChannels() - 1;
+  pha Background;
+  return getMinSNGrouping(SignalToNoise, StartChannel, EndChannel, Background);
 }
 
 // Rebin channels based on the Grouping object
@@ -1038,50 +1363,133 @@ Integer pha::rebinChannels(grouping& GroupInfo, string errorType)
 
 Integer pha::shiftChannels(Integer Start, Integer End, Real Shift)
 {
-  // switch Start and End to zero-based
+  Real Factor(1.0);
+  return this->shiftChannels(Start, End, Shift, Factor);
+}
 
-  Integer Start0 = Start - FirstChannel;
-  Integer End0 = End - FirstChannel;
+Integer pha::shiftChannels(Integer Start, Integer End, Real Shift, Real Factor)
+{
+  vector<Integer> vStart(1,Start);
+  vector<Integer> vEnd(1,End);
+  vector<Real> vShift(1,Shift);
+  vector<Real> vFactor(1,Factor);
+  return this->shiftChannels(vStart, vEnd, vShift, vFactor);
+}
 
-  Integer N(Channel.size());
+Integer pha::shiftChannels(vector<Integer>& vStart, vector<Integer>& vEnd, vector<Real>& vShift, vector<Real>& vFactor)
+{
+  size_t Nchan(Channel.size());
+  vector<Real> Low(Nchan);
+  vector<Real> High(Nchan);
+  for (size_t i=0; i<Nchan; i++) {
+    Low[i] = Channel[i] - 0.5;
+    High[i] = Channel[i] + 0.5;
+  }
+  return this->shiftChannels(Low, High, vStart, vEnd, vShift, vFactor);
+}
 
-  if ( End < Channel[0] || Start > Channel[N-1] ) return(OK);
+Integer pha::shiftChannels(vector<Real>& Low, vector<Real>& High,
+			   Integer Start, Integer End, Real Shift, Real Factor)
+{
+  vector<Integer> vStart(1,Start);
+  vector<Integer> vEnd(1,End);
+  vector<Real> vShift(1,Shift);
+  vector<Real> vFactor(1,Factor);
+  return this->shiftChannels(Low, High, vStart, vEnd, vShift, vFactor);
+}
 
-  // set up temporary arrays to store the output data and error
+Integer pha::shiftChannels(vector<Real>& Low, vector<Real>& High, vector<Integer>& vStart,
+			   vector<Integer>& vEnd, vector<Real>& vShift, 
+			   vector<Real>& vFactor)
+{
+  size_t Nchan(Channel.size());
 
-  vector<Real> TmpPha(N,0.0), TmpError(N,0.0);
+  // SPcalcShift requires vStart and vEnd to refer to element numbers within the
+  // Low and High arrays so need to correct for the starting channel number
+  vector<Integer> vStart0(vStart);
+  vector<Integer> vEnd0(vEnd);
+  if ( Channel[0] != 0 ) {
+    for (size_t i=0; i<vStart0.size(); i++) {
+      vStart0[i] -= Channel[0];
+      vEnd0[i] -= Channel[0];
+    }
+  }
+  
+  // First set up vectors describing how to make the new pha
+  // fromChannelElt[i] is the (zero-based) list of channel elements from which
+  // the new channel i is calculated fromFraction[i] is the list of fractions
+  // corresponding to fromChannel.
 
-  Integer IntShift = (Integer) (abs(Shift)+1);
-  Real FracShift = abs(Shift) - (IntShift-1);
+  vector<vector<size_t> > fromChannelElt(Nchan);
+  vector<vector<Real> > fromFraction(Nchan);
+
+  SPcalcShift(Low, High, vStart0, vEnd0, vShift, vFactor, fromChannelElt, fromFraction);
+
+  // booleans to determine whether other vector quantities exist to be
+  // shifted.
 
   bool isError(StatError.size() > 0);
+  bool isSysError(SysError.size() > 0);
+  bool isQuality(Quality.size() > 0);
+  bool isGroup(Group.size() > 0);
+  bool isArea(AreaScaling.size() > 0);
+  bool isBack(BackScaling.size() > 0);
 
-  Integer Ch = Start0;
+  // set up temporary arrays to store the output data and other quantities
 
-  Integer Step = 1;
-  if ( Shift < 0.0 ) Step = -1;
+  vector<Real> TmpPha(Nchan,0.0), TmpError(Nchan,0.0), TmpSysError(Nchan,0.0);
+  vector<Integer> TmpQuality(Nchan,0), TmpGroup(Nchan,0);
+  vector<Real> TmpArea(Nchan,0.0), TmpBack(Nchan,0.0);
 
-  while ( Ch <= End0 ) {
-    Integer NewCh = Ch + Step*IntShift;
-    if ( NewCh >= 0 && NewCh < N ) {
-      TmpPha[NewCh] += FracShift * Pha[Ch];
-      if ( isError ) TmpError[NewCh] = sqrt(TmpError[NewCh]*TmpError[NewCh] + FracShift*FracShift*StatError[Ch]*StatError[Ch]);
+  // loop over output channels
+
+  for (size_t iChan=0; iChan<Nchan; iChan++) {
+
+    for (size_t j=0; j<fromChannelElt[iChan].size(); j++) {
+      size_t fromChan = fromChannelElt[iChan][j];
+      Real fromFrac = fromFraction[iChan][j];
+      TmpPha[iChan] += fromFrac*Pha[fromChan];
+      if ( isError ) {
+	TmpError[iChan] += fromFrac*StatError[fromChan]*fromFrac*StatError[fromChan];
+      }
+      if ( isSysError ) TmpSysError[iChan] += fromFrac*SysError[fromChan];
+      if ( isQuality ) {
+	if ( Quality[fromChan] != 0 ) TmpQuality[iChan] = 0;
+      }
+      if ( isGroup ) { 
+	if ( Group[fromChan] == 1 ) TmpGroup[iChan] = 1;
+      }
+      if ( isArea ) TmpArea[iChan] += fromFrac*AreaScaling[fromChan];
+      if ( isBack ) TmpBack[iChan] += fromFrac*BackScaling[fromChan];
     }
-    if ( NewCh-Step >= 0 && NewCh-Step < N ) {
-      TmpPha[NewCh-Step] += (1-FracShift) * Pha[Ch];
-      if ( isError ) TmpError[NewCh-Step] = sqrt(TmpError[NewCh-Step]*TmpError[NewCh-Step] + (1-FracShift)*(1-FracShift)*StatError[Ch]*StatError[Ch]);
-    }
-    Ch++;
+
   }
 
-  for (size_t i=0; i<(size_t)N; i++) {
-    Pha[i] = TmpPha[i];
-    StatError[i] = TmpError[i];
+  // transfer to object arrays
+
+  for (size_t iChan=0; iChan<Nchan; iChan++) Pha[iChan] = TmpPha[iChan];
+  if ( isError ) {
+    for (size_t iChan=0; iChan<Nchan; iChan++) StatError[iChan] = sqrt(TmpError[iChan]);
+  }
+  if ( isSysError ) {
+    for (size_t iChan=0; iChan<Nchan; iChan++) SysError[iChan] = TmpSysError[iChan];
+  }
+  if ( isQuality ) {
+    for (size_t iChan=0; iChan<Nchan; iChan++) Quality[iChan] = TmpQuality[iChan];
+  }
+  if ( isGroup ) {
+    for (size_t iChan=0; iChan<Nchan; iChan++) Group[iChan] = TmpGroup[iChan];
+  }
+  if ( isArea ) {
+    for (size_t iChan=0; iChan<Nchan; iChan++) AreaScaling[iChan] = TmpArea[iChan];
+  }
+  if ( isBack ) {
+    for (size_t iChan=0; iChan<Nchan; iChan++) BackScaling[iChan] = TmpBack[iChan];
   }
 
   return(OK);
-}
 
+}
 
 // Convert flux units from whatever they are currently to ph/cm^/s. No need to use this if data are just
 // in counts or counts/s.
@@ -1219,7 +1627,7 @@ Integer PHAtype(string filename, Integer PHAnumber, Integer& Status)
     return(0);
   }
 
-  ExtHDU& spectrum = pInfile->extension(hduName);
+  ExtHDU& spectrum = pInfile->extension(hduName, (int)PHAnumber);
   
   // Check for a HDUCLAS4 keyword of "TYPEII"
 
@@ -1289,7 +1697,7 @@ bool IsPHAcounts(string filename, Integer PHAnumber, Integer& Status)
     return(false);
   }
 
-  ExtHDU& spectrum = pInfile->extension(hduName);
+  ExtHDU& spectrum = pInfile->extension(hduName, (int)PHAnumber);
 
   try {
     Column& Col = spectrum.column("COUNTS");
@@ -1334,11 +1742,22 @@ Integer NumberofSpectra(string filename, Integer PHAnumber, Integer& Status)
     return(0);
   }
 
-  ExtHDU& spectrum = pInfile->extension(hduName);
+  ExtHDU& spectrum = pInfile->extension(hduName, (int)PHAnumber);
 
   return (Integer)spectrum.rows();
 
 }
 
+vector<Integer> SpectrumExtensions(string filename)
+{
+  Integer Status(0);
+  return SpectrumExtensions(filename, Status);
+}
 
+vector<Integer> SpectrumExtensions(string filename, Integer& Status)
+{
+  string value("SPECTRUM");
+  string keyName("EXTNAME");
+  return SPfindExtensions(filename, keyName, value, Status);
+}
 

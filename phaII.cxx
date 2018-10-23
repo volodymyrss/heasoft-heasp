@@ -14,6 +14,7 @@
 // default constructor
 
 phaII::phaII()
+  : phas()
 {
 }
 
@@ -22,6 +23,8 @@ phaII::phaII()
 
 phaII::~phaII()
 {
+  // clear vector with guaranteed reallocation
+  vector<pha>().swap(phas);
 }
 
 // read all spectra from the PHA file
@@ -54,7 +57,7 @@ Integer phaII::read(string filename, Integer PHAnumber)
 
 // reading from PHA file.Somewhat inefficient but just reads each spectrum individually
 
-Integer phaII::read(string filename, Integer PHAnumber, vector<Integer> SpectrumNumber)
+Integer phaII::read(string filename, Integer PHAnumber, vector<Integer>& SpectrumNumber)
 {
   Integer Status(OK);
 
@@ -213,15 +216,9 @@ Integer phaII::write(string filename)
   for (size_t i=0; i<Nspec; i++) {
     Channel.push_back(phas[i].Channel);
   }
-  if ( SPneedCol(Channel, isvector) ) {
-    ttype.push_back("CHANNEL");
-    tunit.push_back(" ");
-    if ( isvector ) {
-      tform.push_back(Repeat+"J");
-    } else {
-      tform.push_back("J");
-    }
-  }
+  ttype.push_back("CHANNEL");
+  tunit.push_back(" ");
+  tform.push_back(Repeat+"J");
 
   // Note that we assume all spectra have the same Datatype
 
@@ -251,7 +248,7 @@ Integer phaII::write(string filename)
   // Find which quantities need to be in columns and which can stay in keywords.
   // To be in a keyword the quantity must be the same for all spectra and all 
   // channels. We also need to find which columns can be scalar and which need 
-  // to be vector. This is ugly.so wrap up test in a utility routine.
+  // to be vector. This is ugly so wrap up test in a utility routine.
 
   // Note that we assume all spectra have the same POISSERR.
 
@@ -534,22 +531,23 @@ Integer phaII::write(string filename)
   SPwriteKey(spectrum, "HDUVERS", PHAVersion, "OGIP version number");
 
   // Write the columns. Column data will be written either as keyword, scalar 
-  // or vector column in that order of priority.
+  // or vector column in that order of priority except for SpecNum, CHANNEL,
+  // RATE, COUNTS and STAT_ERR which must appear as columns.
 
   vector<Integer> SpecNum(Nspec);
   for (size_t i=0; i<Nspec; i++) SpecNum[i] = i + 1;
-  SPwriteCol(spectrum, "SPEC_NUM", SpecNum);
+  SPwriteCol(spectrum, "SPEC_NUM", SpecNum, true);
 
-  SPwriteVectorCol(spectrum, "CHANNEL", Channel);
+  SPwriteVectorCol(spectrum, "CHANNEL", Channel, true);
 
   if ( Datatype == "RATE" ) {
-    SPwriteVectorCol(spectrum, "RATE", PhaRate);
+    SPwriteVectorCol(spectrum, "RATE", PhaRate, true);
   } else {
-    SPwriteVectorCol(spectrum, "COUNTS", PhaCount);
+    SPwriteVectorCol(spectrum, "COUNTS", PhaCount, true);
   }
 
   if ( !Poisserr ) {
-    SPwriteVectorCol(spectrum, "STAT_ERR", StatError);
+    SPwriteVectorCol(spectrum, "STAT_ERR", StatError, true);
   }
 
   SPwriteVectorCol(spectrum, "SYS_ERR", SysError);

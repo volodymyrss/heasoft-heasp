@@ -2,11 +2,26 @@
 // version of heasp.
 
 #include "Cheasp.h"
+
+#ifndef HAVE_rmf
 #include "rmf.h"
+#endif
+
+#ifndef HAVE_rmft
 #include "rmft.h"
+#endif
+
+#ifndef HAVE_pha
 #include "pha.h"
+#endif
+
+#ifndef HAVE_phaII
 #include "phaII.h"
+#endif
+
+#ifndef HAVE_SPio
 #include "SPio.h"
+#endif
 
 // prototypes for conversion routines which we will need
 
@@ -25,7 +40,41 @@ void PHAobjectToStruct(const pha& phaobject, struct PHA *phastruct);
 // *******************************************************************************************
 // C wrapper routines. Prototypes in Cheasp.h.
 
-// read the RMF matrix from an open FITS file - if there are multiple RMF extensions then
+/* read the RMF matrix and ebounds from a FITS file. this assumes that there is only one
+   of each in the file. */
+
+int ReadRMF(char *filename, struct RMF *rmfstruct)
+{
+  Integer Status(0);
+
+  rmf inRMF;
+  Status = inRMF.read((string)filename);
+
+  if ( Status == 0 ) {
+    RMFobjectToStruct(inRMF, rmfstruct, 1);
+    return 0;
+  } else {
+    return (int)Status;
+  }
+}
+
+// write the RMF matrix and ebounds to a FITS file
+
+int WriteRMF(char *filename, struct RMF *rmfstruct)
+{
+
+  Integer Status(0);
+
+  rmf outRMF;
+  RMFstructToObject(rmfstruct, outRMF, 1);
+
+  Status = outRMF.write((string)filename);
+
+  return (int)Status;
+
+}
+
+// read the RMF matrix from a FITS file - if there are multiple RMF extensions then
 // read the one in RMFnumber
 
 int ReadRMFMatrix(char *filename, long RMFnumber, struct RMF *rmfstruct)
@@ -44,7 +93,7 @@ int ReadRMFMatrix(char *filename, long RMFnumber, struct RMF *rmfstruct)
 
 }
 
-// write the RMF matrix to an opened FITS file
+// write the RMF matrix to a FITS file
 
 int WriteRMFMatrix(char *filename, struct RMF *rmfstruct)
 {
@@ -60,7 +109,7 @@ int WriteRMFMatrix(char *filename, struct RMF *rmfstruct)
 
 }
 
-// read the RMF ebounds from an open FITS file - if there are multiple EBOUNDS extensions then
+// read the RMF ebounds from a FITS file - if there are multiple EBOUNDS extensions then
 // read the one in EBDnumber
 
 int ReadRMFEbounds(char *filename, long EBDnumber, struct RMF *rmfstruct)
@@ -78,7 +127,7 @@ int ReadRMFEbounds(char *filename, long EBDnumber, struct RMF *rmfstruct)
   }
 }
 
-// write the RMF ebounds to an opened FITS file
+// write the RMF ebounds to a FITS file
 
 int WriteRMFEbounds(char *filename, struct RMF *rmfstruct)
 {
@@ -103,20 +152,53 @@ void DisplayRMF(struct RMF *rmfstruct)
   return;
 }
 
-// return the channel for a photon of the given input energy - draws random
+// return the channel for a photon of the given input energy - uses random
 // numbers to return NumberPhotons entries in the channel array. Note that this
 // routine assumes that memory has been allocated for the channel array.
 
-void ReturnChannel(struct RMF *rmfstruct, float energy, int NumberPhotons, long *channel)
+void ReturnChannel(struct RMF *rmfstruct, float energy, int NumberPhotons, double* RandomNumber, long *channel)
 {
   rmf inRMF;
   RMFstructToObject(rmfstruct, inRMF, 0);
 
   vector<Integer> channelVector((Integer)NumberPhotons);
+  vector<Real> randomVector((Integer)NumberPhotons);
+  for (size_t i=0; i<(size_t)NumberPhotons; i++) randomVector[i] = RandomNumber[i];
 
-  channelVector = inRMF.RandomChannels((Real)energy,(Integer)NumberPhotons);
+  channelVector = inRMF.RandomChannels((Real)energy,(Integer)NumberPhotons, randomVector);
 
   for (size_t i=0; i<(size_t)NumberPhotons; i++) channel[i] = channelVector[i];
+  
+  return;
+}
+ 
+// return channels for photons of the given input energies - uses random
+// numbers to return NumberPhotons[i] entries for energy[i] in the channel array.
+// Note that this routine assumes that memory has been allocated for the channel array.
+
+void ReturnChannelMultiEnergies(struct RMF *rmfstruct, int NumberEnergies, 
+				float *energy, int *NumberPhotons, double **RandomNumber, long *channel)
+{
+  rmf inRMF;
+  RMFstructToObject(rmfstruct, inRMF, 0);
+
+  Integer NumberOut(0);
+  vector<Real> EnergyArray(NumberEnergies);
+  vector<Integer> NPhotArray(NumberEnergies);
+  vector<vector<Real> > randomVector(NumberEnergies);
+  for (Integer i=0; i<(Integer)NumberEnergies; i++) {
+    NumberOut += NumberPhotons[i];
+    EnergyArray[i] = energy[i];
+    NPhotArray[i] = NumberPhotons[i];
+    randomVector[i].resize(NumberPhotons[i]);
+    for (size_t j=0; j<NumberPhotons[i]; j++) randomVector[i][j] = RandomNumber[i][j];
+  }
+
+  vector<Integer> channelVector((Integer)NumberOut);
+
+  channelVector = inRMF.RandomChannels(EnergyArray,NPhotArray,randomVector);
+
+  for (Integer i=0; i<NumberOut; i++) channel[i] = channelVector[i];
   
   return;
 }
@@ -276,7 +358,7 @@ int ReadARF(char *filename, long ARFnumber, struct ARF *arfstruct)
   }
 }
 
-// write the ARF to an opened FITS file
+// write the ARF to a FITS file
 
 int WriteARF(char *filename, struct ARF *arfstruct)
 {
@@ -899,7 +981,7 @@ void ARFobjectToStruct(const arf& ea, struct ARF *arfstruct)
   arfstruct->HighEnergy = (float *) malloc(arfstruct->NumberEnergyBins*sizeof(float));
   for (size_t i=0; i<(size_t)arfstruct->NumberEnergyBins; i++) arfstruct->HighEnergy[i] = ea.HighEnergy[i];
   arfstruct->EffArea = (float *) malloc(arfstruct->NumberEnergyBins*sizeof(float));
-  for (size_t i=0; i<(size_t)arfstruct->NumberEnergyBins; i++) arfstruct->EffArea[i] = ea.HighEnergy[i];
+  for (size_t i=0; i<(size_t)arfstruct->NumberEnergyBins; i++) arfstruct->EffArea[i] = ea.EffArea[i];
 
   return;
 
@@ -1035,8 +1117,14 @@ void PHAobjectToStruct(const pha& phaobject, struct PHA *phastruct)
   phastruct->Pha = (float*) malloc(nChan*sizeof(float));
   for (size_t i=0; i<nChan; i++) phastruct->Pha[i] = (float)phaobject.Pha[i];
 
-  phastruct->StatError = (float*) malloc(nChan*sizeof(float));
-  for (size_t i=0; i<nChan; i++) phastruct->StatError[i] = (float)phaobject.StatError[i];
+  phastruct->StatError = (float*) malloc(nChan*sizeof(float)); 
+  if ( phaobject.StatError.size() == nChan ) {
+    for (size_t i=0; i<nChan; i++) phastruct->StatError[i] = (float)phaobject.StatError[i];
+  } else if ( phaobject.StatError.size() == 1 ) {
+    for (size_t i=0; i<nChan; i++) phastruct->StatError[i] = (float)phaobject.StatError[0];
+  } else {
+    for (size_t i=0; i<nChan; i++) phastruct->StatError[i] = 0.0;
+  }
 
   phastruct->SysError = (float*) malloc(nChan*sizeof(float));
   if ( phaobject.SysError.size() == nChan ) {
@@ -1095,9 +1183,6 @@ void SPsetCCfitsVerbose(int mode)
 
   if ( mode == 0 ) {
     verbosity = true;
-    //debug
-    cout << "CCfits verbosity set to true" << std::endl;
-
   }
 
   FITS::setVerboseMode(verbosity);

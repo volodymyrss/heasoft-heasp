@@ -12,11 +12,13 @@
 #include "arf.h"
 #endif
 
+#ifndef HAVE_pha
+#include "pha.h"
+#endif
+
 #ifndef HAVE_grouping
 #include "grouping.h"
 #endif
-
-#include "headas_rand.h"
 
 #define HAVE_rmf 1
 
@@ -103,10 +105,12 @@ class rmf{
   vector<Real> RowValues(Integer, Integer); // ... and grating order
 
   // Use the response matrix to generate random channel numbers for a photon 
-  // of given energy (and grating order).
+  // of given energy or set of energies (and grating order).
 
-  vector<Integer> RandomChannels(const Real energy, const Integer NumberPhotons);
-  vector<Integer> RandomChannels(const Real energy, const Integer NumberPhotons, const Integer GratingOrder);
+  vector<Integer> RandomChannels(const Real energy, const Integer NumberPhotons, const vector<Real>& RandomNumber);
+  vector<Integer> RandomChannels(const vector<Real>& energy, const vector<Integer>& NumberPhotons, const vector<vector<Real> >& RandomNumber);
+  vector<Integer> RandomChannels(const Real energy, const Integer NumberPhotons, const Integer GratingOrder, const vector<Real>& RandomNumber);
+  vector<Integer> RandomChannels(const vector<Real>& energy, const vector<Integer>& NumberPhotons, const Integer GratingOrder, const vector<vector<Real> >& RandomNumber);
 
   // Display information about the response - return as a string
 
@@ -133,14 +137,30 @@ class rmf{
 
   void compress(const Real threshold);
 
+  // Uncompress the rmf ie turn it into a full rectangular matrix
+
+  void uncompress();
+
   // Rebin in either channel or energy space
 
   Integer rebinChannels(grouping&);
   Integer rebinEnergies(grouping&);
 
-  // Remaps response up or down in channels
+  // Remaps response up or down in channels or energies
 
-  Integer shiftChannels(Integer Start, Integer Stop, Real Shift);
+  Integer shiftChannels(const Integer Start, const Integer End, const Real Shift);
+  Integer shiftChannels(const Integer Start, const Integer End, const Real Shift, const Real Factor, bool useEnergyBounds);
+  Integer shiftChannels(const vector<Integer>& vStart, const vector<Integer>& vEnd, 
+			const vector<Real>& vShift, const vector<Real>& vFactor, bool useEnergyBounds);
+
+  Integer shiftEnergies(const Integer Start, const Integer End, const Real Shift, const Real Factor);
+  Integer shiftEnergies(const vector<Integer>& vStart, const vector<Integer>& vEnd, 
+			const vector<Real>& vShift, const vector<Real>& vFactor);
+
+  // Multiply by a vector which may not have the same energy binning as the response
+
+  Integer interpolateAndMultiply(const vector<Real>& energies, 
+				 const vector<Real>& factors);
 
   // Write response
 
@@ -159,6 +179,10 @@ class rmf{
   // Merge ARF and rmf
 
   rmf& operator*=(const arf&);
+
+  // multiply rmf by factor
+
+  rmf& operator*=(const Real&);
 
   // add rmf's
 
@@ -179,8 +203,28 @@ class rmf{
 
   // add a row to the response using an input response vector and energy range.
 
-  void addRow(const vector<Real> Response, const Real eLow, const Real eHigh);
-  void addRow(const vector<vector<Real> > Response, const Real eLow, const Real eHigh, const vector<Integer> GratingOrder);
+  void addRow(const vector<Real>& Response, const Real eLow, const Real eHigh);
+  void addRow(const vector<vector<Real> >& Response, const Real eLow, const Real eHigh, const vector<Integer>& GratingOrder);
+
+  // substitute a row into the response using an input response vector and energy range.
+
+  void substituteRow(const Integer RowNumber, const vector<Real>& Response);
+  void substituteRow(const Integer RowNumber, const vector<vector<Real> >& Response, const vector<Integer>& GratingOrder);
+
+  // multiply a response by a vector and output a vector of pha values. The input
+  // vector is assumed to be on the energy binning
+
+  vector<Real> multiplyByModel(const vector<Real>& model);
+
+  // return a vector containing the FWHM in channels for each energy. This does
+  // assume that the response has a well-defined main peak
+
+  vector<Real> estimatedFWHM();
+
+  // return a vector containing the FWHM in channels for each channel. This does
+  // assume that the response has a well-defined main peak
+
+  vector<Real> estimatedFWHMperChannel();
 
 };
 
@@ -190,12 +234,18 @@ class rmf{
 
 rmf operator* (const rmf&, const arf&);
 rmf operator* (const arf&, const rmf&);
+rmf operator* (const rmf&, const Real&);
+rmf operator* (const Real&, const rmf&);
 rmf operator+ (const rmf&, const rmf&);
 
 // calculate the response vector for some energy given a gaussian width
 // the gaussian is assumed to be in the units of energyLow, energyHigh,
 // ChannelLowEnergy and ChannelHighEnergy
 
-void calcGaussResp(const Real width, const Real energyLow, const Real energyHigh, 
-                   const Real threshold, const vector<Real>& ChannelLowEnergy, 
-		   const vector<Real>& ChannelHighEnergy, vector<Real>& ResponseVector);
+void calcGaussResp(const Real width, const Real energy, const Real threshold, 
+		   const vector<Real>& ChannelLowEnergy, 
+		   const vector<Real>& ChannelHighEnergy, 
+		   vector<Real>& ResponseVector);
+
+size_t binarySearch(const Real energy, const vector<Real>& lowEnergy,
+		    const vector<Real>& highEnergy);
