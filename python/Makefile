@@ -10,7 +10,7 @@ HD_COMPONENT_NAME       = heacore
 
 HD_LIBRARY_ROOT         = _heasp
 
-HD_CXXFLAGS             = ${HD_STD_CXXFLAGS} -I${PYTHON_INC}
+HD_CXXFLAGS             = ${HD_STD_CXXFLAGS} -I${PYTHON_INC} $(shell python-config --includes) -I${HEADAS}/include
 
 HD_LIBRARY_SRC_cxx      = heasp_wrap.cxx
 

@@ -11,7 +11,7 @@ HD_SHLIB_LIBS		= ${HD_LFLAGS} -l${HEAUTILS} -l${CCFITS} -l${CFITSIO} -l${HEAIO} 
 
 HD_CFLAGS		= ${HD_STD_CFLAGS}
 
-HD_CXXFLAGS             = ${HD_STD_CXXFLAGS}
+HD_CXXFLAGS             = ${HD_STD_CXXFLAGS} -I${HEADAS}/include $(shell python-config --includes)
 
 HD_INSTALL_HEADERS	= heasp.h Cheasp.h pha.h phaII.h SPio.h SPutils.h grouping.h arf.h arfII.h rmf.h rmft.h table.h
 
